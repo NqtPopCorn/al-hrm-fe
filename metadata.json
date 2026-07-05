@@ -1,0 +1,6 @@
+{
+  "name": "Nova HRMS",
+  "description": "Comprehensive Human Resources Management System MVP with modules for employees, attendance, payroll, recruitment, and documents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
