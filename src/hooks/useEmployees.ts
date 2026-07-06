@@ -6,6 +6,10 @@ import {
 
 import { employeeQueryKeys } from '../lib/query-keys';
 import {
+  getSensitiveInfoCacheSource,
+  mergeSensitiveInfoIntoPaginatedEmployees,
+} from '../lib/employee-sensitive-cache';
+import {
   employeeService,
   EmployeeImportResponse,
   EmployeeImportRowError,
@@ -20,15 +24,8 @@ interface UseEmployeesOptions extends EmployeeListParams {
   enabled?: boolean;
 }
 
-function mergeEmployeeSensitiveInfo(
-  employee: Employee,
-  sensitiveInfo: EmployeeSensitiveInfo | null,
-) {
-  return {
-    ...employee,
-    sensitiveInfo: sensitiveInfo ?? undefined,
-  };
-}
+const SENSITIVE_INFO_STALE_TIME = 10 * 60_000;
+const SENSITIVE_INFO_GC_TIME = 30 * 60_000;
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -85,20 +82,20 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     onSuccess: async updatedEmployee => {
       queryClient.setQueriesData<PaginatedResponse<Employee>>(
         { queryKey: employeeQueryKeys.lists() },
-        currentData => {
-          if (!currentData) return currentData;
-          return {
-            ...currentData,
-            data: currentData.data.map(employee =>
-              employee.id === updatedEmployee.id
-                ? {
-                    ...updatedEmployee,
-                    sensitiveInfo: employee.sensitiveInfo,
-                  }
-                : employee,
-            ),
-          };
-        },
+        currentData =>
+          currentData
+            ? {
+                ...currentData,
+                data: currentData.data.map(employee =>
+                  employee.id === updatedEmployee.id
+                    ? {
+                        ...updatedEmployee,
+                        sensitiveInfo: employee.sensitiveInfo,
+                      }
+                    : employee,
+                ),
+              }
+            : currentData,
       );
       await queryClient.invalidateQueries({
         queryKey: employeeQueryKeys.lists(),
@@ -111,20 +108,20 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     onSuccess: async disabledEmployee => {
       queryClient.setQueriesData<PaginatedResponse<Employee>>(
         { queryKey: employeeQueryKeys.lists() },
-        currentData => {
-          if (!currentData) return currentData;
-          return {
-            ...currentData,
-            data: currentData.data.map(employee =>
-              employee.id === disabledEmployee.id
-                ? {
-                    ...disabledEmployee,
-                    sensitiveInfo: employee.sensitiveInfo,
-                  }
-                : employee,
-            ),
-          };
-        },
+        currentData =>
+          currentData
+            ? {
+                ...currentData,
+                data: currentData.data.map(employee =>
+                  employee.id === disabledEmployee.id
+                    ? {
+                        ...disabledEmployee,
+                        sensitiveInfo: employee.sensitiveInfo,
+                      }
+                    : employee,
+                ),
+              }
+            : currentData,
       );
       await queryClient.invalidateQueries({
         queryKey: employeeQueryKeys.lists(),
@@ -132,10 +129,48 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     },
   });
 
-  const getSensitiveInfo = async (employeeId: string) => {
+  const getCachedSensitiveInfo = (
+    employeeId: string,
+    employeeSensitiveInfo?: EmployeeSensitiveInfo | null,
+  ) => {
+    const queryKey = employeeQueryKeys.sensitive(employeeId);
+    const querySensitiveInfo = queryClient.getQueryData<EmployeeSensitiveInfo | null>(
+      queryKey,
+    );
+    const cacheSource = getSensitiveInfoCacheSource({
+      querySensitiveInfo,
+      employeeSensitiveInfo,
+    });
+
+    if (cacheSource.shouldFetch) {
+      return undefined;
+    }
+
+    if (querySensitiveInfo === undefined) {
+      queryClient.setQueryData(queryKey, cacheSource.sensitiveInfo ?? null);
+    }
+
+    return cacheSource.sensitiveInfo ?? null;
+  };
+
+  const getSensitiveInfo = async (
+    employeeId: string,
+    employeeSensitiveInfo?: EmployeeSensitiveInfo | null,
+  ) => {
+    const cachedSensitiveInfo = getCachedSensitiveInfo(
+      employeeId,
+      employeeSensitiveInfo,
+    );
+
+    if (cachedSensitiveInfo !== undefined) {
+      return cachedSensitiveInfo;
+    }
+
     return queryClient.fetchQuery({
       queryKey: employeeQueryKeys.sensitive(employeeId),
       queryFn: () => employeeService.getSensitiveInfo(employeeId),
+      staleTime: SENSITIVE_INFO_STALE_TIME,
+      gcTime: SENSITIVE_INFO_GC_TIME,
     });
   };
 
@@ -154,21 +189,13 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
       );
       queryClient.setQueriesData<PaginatedResponse<Employee>>(
         { queryKey: employeeQueryKeys.lists() },
-        currentData => {
-          if (!currentData) return currentData;
-          return {
-            ...currentData,
-            data: currentData.data.map(employee =>
-              employee.id === variables.employeeId
-                ? mergeEmployeeSensitiveInfo(employee, sensitiveInfo)
-                : employee,
-            ),
-          };
-        },
+        currentData =>
+          mergeSensitiveInfoIntoPaginatedEmployees(
+            currentData,
+            variables.employeeId,
+            sensitiveInfo,
+          ),
       );
-      await queryClient.invalidateQueries({
-        queryKey: employeeQueryKeys.lists(),
-      });
     },
   });
 
@@ -188,17 +215,12 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     queryClient.setQueryData(employeeQueryKeys.sensitive(employeeId), sensitiveInfo);
     queryClient.setQueriesData<PaginatedResponse<Employee>>(
       { queryKey: employeeQueryKeys.lists() },
-      currentData => {
-        if (!currentData) return currentData;
-        return {
-          ...currentData,
-          data: currentData.data.map(employee =>
-            employee.id === employeeId
-              ? mergeEmployeeSensitiveInfo(employee, sensitiveInfo)
-              : employee,
-          ),
-        };
-      },
+      currentData =>
+        mergeSensitiveInfoIntoPaginatedEmployees(
+          currentData,
+          employeeId,
+          sensitiveInfo,
+        ),
     );
   };
 
@@ -218,6 +240,7 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     ) => updateEmployeeMutation.mutateAsync({ employeeId, payload }),
     disableEmployee: (employeeId: string) =>
       disableEmployeeMutation.mutateAsync(employeeId),
+    getCachedSensitiveInfo,
     getSensitiveInfo,
     updateSensitiveInfo: (
       employeeId: string,

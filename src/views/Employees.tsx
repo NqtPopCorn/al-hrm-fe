@@ -246,6 +246,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
     createEmployee,
     updateEmployee,
     disableEmployee,
+    getCachedSensitiveInfo,
     getSensitiveInfo,
     updateSensitiveInfo,
     setSensitiveInfo,
@@ -328,7 +329,21 @@ export default function Employees({ userRole }: { userRole: Role }) {
       return;
     }
 
-    if (selectedEmployee.sensitiveInfo) {
+    if (selectedEmployee.sensitiveInfo !== undefined) {
+      setSensitiveError(null);
+      setIsSensitiveLoading(false);
+      return;
+    }
+
+    const cachedSensitiveInfo = getCachedSensitiveInfo(
+      selectedEmployeeId,
+      selectedEmployee.sensitiveInfo,
+    );
+
+    if (cachedSensitiveInfo !== undefined) {
+      if (cachedSensitiveInfo !== null) {
+        setSensitiveInfo(selectedEmployeeId, cachedSensitiveInfo);
+      }
       setSensitiveError(null);
       setIsSensitiveLoading(false);
       return;
@@ -340,7 +355,10 @@ export default function Employees({ userRole }: { userRole: Role }) {
       try {
         setIsSensitiveLoading(true);
         setSensitiveError(null);
-        const sensitiveInfo = await getSensitiveInfo(selectedEmployeeId);
+        const sensitiveInfo = await getSensitiveInfo(
+          selectedEmployeeId,
+          selectedEmployee.sensitiveInfo,
+        );
 
         if (!isActive) {
           return;
@@ -458,9 +476,23 @@ export default function Employees({ userRole }: { userRole: Role }) {
 
     let nextSensitiveInfo = employee.sensitiveInfo ?? null;
 
-    if (canAccessEmployeeDirectory && !nextSensitiveInfo) {
+    if (!nextSensitiveInfo && canAccessEmployeeDirectory) {
+      const cachedSensitiveInfo = getCachedSensitiveInfo(
+        employee.id,
+        employee.sensitiveInfo,
+      );
+
+      if (cachedSensitiveInfo !== undefined) {
+        nextSensitiveInfo = cachedSensitiveInfo;
+        if (cachedSensitiveInfo !== null) {
+          setSensitiveInfo(employee.id, cachedSensitiveInfo);
+        }
+      } else {
       try {
-        nextSensitiveInfo = await getSensitiveInfo(employee.id);
+        nextSensitiveInfo = await getSensitiveInfo(
+          employee.id,
+          employee.sensitiveInfo,
+        );
         setSensitiveInfo(employee.id, nextSensitiveInfo);
       } catch (error) {
         setFormError(
@@ -469,6 +501,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
             'Unable to load sensitive data for this employee.',
           ),
         );
+      }
       }
     }
 
