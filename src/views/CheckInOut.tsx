@@ -3,9 +3,11 @@ import { AlertCircle, CheckCircle, Clock, Edit3, Eye, FileText, MapPin } from 'l
 import JoditEditor from 'jodit-react';
 
 import Modal from '../components/Modal';
+import { getAttendanceStatusMeta } from '../lib/attendance-status';
 import { useAttendance } from '../hooks/useAttendance';
 import { useDailyReports } from '../hooks/useDailyReports';
 import {
+  AttendanceAdjustmentRequest,
   AttendanceRecord,
   DailyReport,
   User,
@@ -51,13 +53,25 @@ function getStatusBadgeClasses(status: AttendanceRecord['status']) {
   return 'bg-rose-100 text-rose-700';
 }
 
+function getAdjustmentStatusClasses(status: AttendanceAdjustmentRequest['status']) {
+  if (status === 'APPROVED') {
+    return 'bg-green-100 text-green-700';
+  }
+
+  if (status === 'PENDING') {
+    return 'bg-amber-100 text-amber-700';
+  }
+
+  return 'bg-rose-100 text-rose-700';
+}
+
 export default function CheckInOut({ user }: { user: User }) {
   const month = getCurrentMonth();
   const today = getToday();
   const [clock, setClock] = useState(() =>
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   );
-  const [viewMode, setViewMode] = useState<'personal' | 'reports'>('personal');
+  const [viewMode, setViewMode] = useState<'personal' | 'requests' | 'reports'>('personal');
   const [workMode, setWorkMode] = useState<WorkMode>('OFFICE');
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -70,11 +84,37 @@ export default function CheckInOut({ user }: { user: User }) {
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
   const [viewingReport, setViewingReport] = useState<DailyReport | null>(null);
   const [editingReport, setEditingReport] = useState<DailyReport | null>(null);
+  const [currentGps, setCurrentGps] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<'idle' | 'fetching' | 'ok' | 'denied'>('idle');
+
+  /** Lấy GPS hiện tại — MVP: server tin client, không validate phức tạp */
+  const getGps = (): Promise<{ lat: number; lng: number } | null> => {
+    if (!navigator.geolocation) return Promise.resolve(null);
+    setGpsStatus('fetching');
+    return new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setCurrentGps(coords);
+          setGpsStatus('ok');
+          resolve(coords);
+        },
+        () => {
+          setGpsStatus('denied');
+          resolve(null);
+        },
+        { timeout: 5000 },
+      );
+    });
+  };
 
   const {
     records,
+    adjustmentRequests,
     isLoading: isAttendanceLoading,
+    isAdjustmentRequestsLoading,
     error: attendanceError,
+    adjustmentRequestsError,
     checkIn,
     checkOut,
     createAdjustmentRequest,
@@ -84,6 +124,7 @@ export default function CheckInOut({ user }: { user: User }) {
   } = useAttendance({
     month,
     enabled: true,
+    includeAdjustmentRequests: true,
   });
   const {
     reports,
@@ -99,6 +140,8 @@ export default function CheckInOut({ user }: { user: User }) {
   const todayRecord = records.find(record => record.date === today) ?? null;
   const todayReport = reports.find(report => report.date === today) ?? null;
   const isCheckedIn = Boolean(todayRecord?.checkIn && !todayRecord?.checkOut);
+  const todayStatusMeta = todayRecord ? getAttendanceStatusMeta(todayRecord) : null;
+  const pageError = attendanceError || adjustmentRequestsError || reportsError;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -131,20 +174,21 @@ export default function CheckInOut({ user }: { user: User }) {
 
   const handleCheckIn = async () => {
     try {
+      const gps = workMode === 'OFFICE' ? await getGps() : null;
       await checkIn({
         workDate: today,
         checkInAt: new Date().toISOString(),
         requestedMode: workMode,
-        publicIp: 'web-admin',
+        ...(gps ? { gps } : {}),
       });
     } catch (error) {
-      setReportError(getErrorMessage(error, 'Unable to check in.'));
+      setReportError(getErrorMessage(error, 'Không thể check in.'));
     }
   };
 
   const handleReportSubmit = async () => {
     if (!reportContent.trim()) {
-      setReportError('Bao cao cuoi ngay la bat buoc khi check-out.');
+      setReportError('Báo cáo cuối ngày là bắt buộc khi check-out.');
       return;
     }
 
@@ -154,12 +198,13 @@ export default function CheckInOut({ user }: { user: User }) {
       if (editingReport) {
         await updateReport(editingReport.id, reportContent);
       } else {
+        const gps = workMode === 'OFFICE' ? (currentGps ?? await getGps()) : null;
         await checkOut({
           workDate: today,
           checkOutAt: new Date().toISOString(),
           reportContentHtml: reportContent,
           requestedMode: workMode,
-          publicIp: 'web-admin',
+          ...(gps ? { gps } : {}),
         });
       }
 
@@ -179,7 +224,7 @@ export default function CheckInOut({ user }: { user: User }) {
     }
 
     if (!adjustReason.trim()) {
-      setAdjustError('Vui long nhap ly do dieu chinh.');
+      setAdjustError('Vui lòng nhập lý do điều chỉnh.');
       return;
     }
 
@@ -196,6 +241,7 @@ export default function CheckInOut({ user }: { user: User }) {
         reason: adjustReason.trim(),
       });
       setIsAdjustModalOpen(false);
+      setViewMode('requests');
     } catch (error) {
       setAdjustError(
         getErrorMessage(error, 'Unable to create attendance adjustment request.'),
@@ -215,7 +261,7 @@ export default function CheckInOut({ user }: { user: User }) {
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col items-center justify-center text-center">
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">Gio hien tai</h2>
+          <h2 className="text-lg font-semibold text-slate-800 mb-2">Giờ hiện tại</h2>
           <div className="text-4xl font-mono text-blue-600 mb-6 tracking-tight">
             {clock}
           </div>
@@ -230,6 +276,17 @@ export default function CheckInOut({ user }: { user: User }) {
               <option value="WFH">WFH</option>
             </select>
 
+            {workMode === 'OFFICE' && (
+              <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                {gpsStatus === 'idle' && 'GPS sẽ được lấy khi check in/out.'}
+                {gpsStatus === 'fetching' && '📡 Đang lấy GPS...'}
+                {gpsStatus === 'ok' && currentGps
+                  ? `📍 GPS: ${currentGps.lat.toFixed(5)}, ${currentGps.lng.toFixed(5)}`
+                  : null}
+                {gpsStatus === 'denied' && '⚠️ Không thể lấy GPS — sẽ bỏ qua.'}
+              </div>
+            )}
+
             <button
               onClick={() => {
                 if (isCheckedIn) {
@@ -239,30 +296,29 @@ export default function CheckInOut({ user }: { user: User }) {
                 void handleCheckIn();
               }}
               disabled={isCheckingIn || isCheckingOut}
-              className={`w-full py-3 px-4 rounded-md font-medium transition-all flex justify-center items-center text-sm ${
-                !isCheckedIn
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-              } disabled:opacity-60`}
+              className={`w-full py-3 px-4 rounded-md font-medium transition-all flex justify-center items-center text-sm ${!isCheckedIn
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                } disabled:opacity-60`}
             >
               <Clock className="w-5 h-5 mr-2" />
-              {isCheckedIn ? 'Check Out va Bao Cao' : 'Check In'}
+              {isCheckedIn ? 'Check Out và Báo Cáo' : 'Check In'}
             </button>
           </div>
 
           <div className="mt-6 pt-6 border-t border-slate-100 w-full text-left">
-            <h4 className="text-sm font-medium text-slate-700 mb-3">Chi tiet ca lam viec</h4>
+            <h4 className="text-sm font-medium text-slate-700 mb-3">Chi tiết ca làm việc</h4>
             <div className="space-y-2 text-sm text-slate-600">
               <div className="flex justify-between">
-                <span>Bat dau:</span>
+                <span>Bắt đầu:</span>
                 <span className="font-mono">{shiftCopy.startTime}</span>
               </div>
               <div className="flex justify-between">
-                <span>Ket thuc:</span>
+                <span>Kết thúc:</span>
                 <span className="font-mono">{shiftCopy.endTime}</span>
               </div>
               <div className="flex justify-between">
-                <span>Nghi trua:</span>
+                <span>Nghỉ trưa:</span>
                 <span className="font-mono">
                   {shiftCopy.breakStartTime} - {shiftCopy.breakEndTime}
                 </span>
@@ -270,10 +326,11 @@ export default function CheckInOut({ user }: { user: User }) {
             </div>
             {todayRecord ? (
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-                <p>Hom nay: {todayRecord.status}</p>
+                <p>Hôm nay: {todayRecord.status}</p>
                 <p className="mt-1">
                   {todayRecord.checkIn ?? '--:--'} - {todayRecord.checkOut ?? '--:--'}
                 </p>
+                <p className="mt-1 text-slate-500">{todayStatusMeta?.detail}</p>
               </div>
             ) : null}
           </div>
@@ -282,10 +339,10 @@ export default function CheckInOut({ user }: { user: User }) {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col col-span-1 md:col-span-2">
           <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
             <div>
-              <h3 className="font-semibold text-sm">Lich su ca nhan</h3>
-              {attendanceError || reportsError ? (
+              <h3 className="font-semibold text-sm">Lịch sử cá nhân</h3>
+              {pageError ? (
                 <p className="mt-1 text-xs text-rose-600">
-                  {attendanceError || reportsError}
+                  {pageError}
                 </p>
               ) : null}
             </div>
@@ -293,24 +350,31 @@ export default function CheckInOut({ user }: { user: User }) {
             <div className="flex bg-slate-100 p-1 rounded-md">
               <button
                 onClick={() => setViewMode('personal')}
-                className={`px-3 py-1.5 text-xs font-medium rounded ${
-                  viewMode === 'personal'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`px-3 py-1.5 text-xs font-medium rounded ${viewMode === 'personal'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
-                Lich su cham cong
+                Lịch sử chấm công
+              </button>
+              <button
+                onClick={() => setViewMode('requests')}
+                className={`px-3 py-1.5 text-xs font-medium rounded ${viewMode === 'requests'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
+              >
+                Yêu cầu điều chỉnh
               </button>
               <button
                 onClick={() => setViewMode('reports')}
-                className={`px-3 py-1.5 text-xs font-medium rounded flex items-center ${
-                  viewMode === 'reports'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`px-3 py-1.5 text-xs font-medium rounded flex items-center ${viewMode === 'reports'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 <FileText className="w-3.5 h-3.5 mr-1" />
-                Bao cao cua toi
+                Báo cáo của tôi
               </button>
             </div>
           </div>
@@ -318,7 +382,7 @@ export default function CheckInOut({ user }: { user: User }) {
             {viewMode === 'reports' ? (
               <div className="p-6">
                 {(isReportsLoading || isAttendanceLoading) && reports.length === 0 ? (
-                  <p className="text-sm text-slate-500">Dang tai du lieu...</p>
+                  <p className="text-sm text-slate-500">Đang tải dữ liệu...</p>
                 ) : null}
                 <div className="space-y-4">
                   {reports.map(report => (
@@ -329,7 +393,7 @@ export default function CheckInOut({ user }: { user: User }) {
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <p className="text-xs text-slate-500">
-                            Bao cao ngay {report.date} - Lan sua cuoi:{' '}
+                            Báo cáo ngày {report.date} - Lần sửa cuối:{' '}
                             {new Date(report.updatedAt).toLocaleString()}
                           </p>
                         </div>
@@ -338,7 +402,7 @@ export default function CheckInOut({ user }: { user: User }) {
                           className="text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center text-xs font-medium bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded"
                         >
                           <Eye className="w-4 h-4 mr-1" />
-                          Xem chi tiet
+                          Xem chi tiết
                         </button>
                       </div>
                       <div
@@ -350,61 +414,118 @@ export default function CheckInOut({ user }: { user: User }) {
                   {!isReportsLoading && reports.length === 0 ? (
                     <div className="text-center py-12 text-slate-500">
                       <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                      <p>Ban chua co bao cao nao</p>
+                      <p>Bạn chưa có báo cáo nào</p>
                     </div>
                   ) : null}
                 </div>
               </div>
-            ) : (
+            ) : viewMode === 'requests' ? (
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
                   <tr>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Ngay</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Check In</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Check Out</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Vi tri</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Trang thai</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Thao tac</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Ngày</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Check In Đề xuất</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Check Out Đề xuất</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Lý do</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {records.map(record => (
-                    <tr key={record.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 text-sm font-medium">{record.date}</td>
-                      <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</td>
-                      <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkOut || '--:--'}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center text-sm text-slate-600">
-                          <MapPin className="w-4 h-4 mr-1 text-slate-400" />
-                          {record.type}
+                  {adjustmentRequests.map(request => (
+                    <tr key={request.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 text-sm font-medium">{request.workDate}</td>
+                      <td className="px-6 py-4 text-sm font-mono text-slate-600">
+                        {request.requestedCheckIn || '--:--'}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-mono text-slate-600">
+                        {request.requestedCheckOut || '--:--'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">
+                        <div className="max-w-[18rem] space-y-1">
+                          <p>{request.reason}</p>
+                          {request.reviewNote ? (
+                            <p className="text-xs text-slate-500">
+                              Review: {request.reviewNote}
+                            </p>
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <span
-                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${getStatusBadgeClasses(record.status)}`}
+                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${getAdjustmentStatusClasses(request.status)}`}
                         >
-                          {record.status === 'VALID' ? (
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                          ) : (
-                            <AlertCircle className="w-3 h-3 mr-1" />
-                          )}
-                          {record.status}
+                          {request.status}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => openAdjustModal(record)}
-                          className="text-slate-500 hover:text-slate-800 transition-colors inline-flex items-center text-xs font-medium"
-                        >
-                          Yeu cau sua
-                        </button>
                       </td>
                     </tr>
                   ))}
+                  {!isAdjustmentRequestsLoading && adjustmentRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
+                        ChÆ°a cÃ³ yÃªu cáº§u Ä‘iá»u chá»‰nh nÃ o trong thÃ¡ng nÃ y.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
+                  <tr>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Ngày</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Check In</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Check Out</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Vị trí</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Trạng thái</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {records.map(record => {
+                    const statusMeta = getAttendanceStatusMeta(record);
+                    return (
+                      <tr key={record.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">{record.date}</td>
+                        <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</td>
+                        <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkOut || '--:--'}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center text-sm text-slate-600">
+                            <MapPin className="w-4 h-4 mr-1 text-slate-400" />
+                            {record.type}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${getStatusBadgeClasses(record.status)}`}
+                            >
+                              {record.status === 'VALID' ? (
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                              ) : (
+                                <AlertCircle className="w-3 h-3 mr-1" />
+                              )}
+                              {statusMeta.label}
+                            </span>
+                            <p className="max-w-[14rem] text-xs text-slate-500">
+                              {statusMeta.detail}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => openAdjustModal(record)}
+                            className="text-slate-500 hover:text-slate-800 transition-colors inline-flex items-center text-xs font-medium"
+                          >
+                            Yêu cầu sửa
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {!isAttendanceLoading && records.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-500">
-                        Chua co du lieu attendance trong thang nay.
+                        Chưa có dữ liệu attendance trong tháng này.
                       </td>
                     </tr>
                   ) : null}
@@ -418,17 +539,17 @@ export default function CheckInOut({ user }: { user: User }) {
       <Modal
         isOpen={isAdjustModalOpen}
         onClose={() => setIsAdjustModalOpen(false)}
-        title="Yeu cau sua doi cham cong"
+        title="Yêu cầu sửa đổi chấm công"
       >
         {selectedRecord ? (
           <div className="space-y-4">
             <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm text-slate-700">
               <div className="flex justify-between mb-1">
-                <span className="font-medium">Ngay:</span>
+                <span className="font-medium">Ngày:</span>
                 <span>{selectedRecord.date}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">Trang thai hien tai:</span>
+                <span className="font-medium">Trạng thái hiện tại:</span>
                 <span>{selectedRecord.status}</span>
               </div>
             </div>
@@ -441,7 +562,7 @@ export default function CheckInOut({ user }: { user: User }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Gio Check In</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Giờ Check In</label>
                 <input
                   type="time"
                   value={adjustCheckIn}
@@ -450,7 +571,7 @@ export default function CheckInOut({ user }: { user: User }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Gio Check Out</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Giờ Check Out</label>
                 <input
                   type="time"
                   value={adjustCheckOut}
@@ -461,13 +582,13 @@ export default function CheckInOut({ user }: { user: User }) {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Ly do</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Lý do</label>
               <textarea
                 rows={3}
                 value={adjustReason}
                 onChange={event => setAdjustReason(event.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none"
-                placeholder="Vui long giai thich ly do yeu cau sua doi..."
+                placeholder="Vui lòng giải thích lý do yêu cầu sửa đổi..."
               />
             </div>
 
@@ -477,7 +598,7 @@ export default function CheckInOut({ user }: { user: User }) {
                 onClick={() => setIsAdjustModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
               >
-                Huy
+                Hủy
               </button>
               <button
                 type="button"
@@ -485,7 +606,7 @@ export default function CheckInOut({ user }: { user: User }) {
                 disabled={isCreatingAdjustmentRequest}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
               >
-                {isCreatingAdjustmentRequest ? 'Dang gui...' : 'Gui yeu cau'}
+                {isCreatingAdjustmentRequest ? 'Đang gửi...' : 'Gửi yêu cầu'}
               </button>
             </div>
           </div>
@@ -500,7 +621,7 @@ export default function CheckInOut({ user }: { user: User }) {
           setReportContent('');
           setReportError(null);
         }}
-        title={editingReport ? 'Chinh sua bao cao' : 'Bao cao cuoi ngay'}
+        title={editingReport ? 'Chỉnh sửa báo cáo' : 'Báo cáo cuối ngày'}
         maxWidth="max-w-4xl"
       >
         <div className="space-y-4">
@@ -511,7 +632,7 @@ export default function CheckInOut({ user }: { user: User }) {
           ) : null}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
-              Noi dung bao cao cong viec hom nay:
+              Nội dung báo cáo công việc hôm nay:
             </label>
             <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
               <JoditEditor
@@ -522,7 +643,7 @@ export default function CheckInOut({ user }: { user: User }) {
                   toolbarAdaptive: false,
                 }}
                 onBlur={newContent => setReportContent(newContent)}
-                onChange={() => {}}
+                onChange={() => { }}
               />
             </div>
           </div>
@@ -537,7 +658,7 @@ export default function CheckInOut({ user }: { user: User }) {
               }}
               className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
             >
-              Bo qua
+              Bỏ qua
             </button>
             <button
               type="button"
@@ -547,11 +668,11 @@ export default function CheckInOut({ user }: { user: User }) {
             >
               {editingReport
                 ? isUpdatingReport
-                  ? 'Dang luu...'
-                  : 'Luu thay doi'
+                  ? 'Đang lưu...'
+                  : 'Lưu thay đổi'
                 : isCheckingOut
-                  ? 'Dang check-out...'
-                  : 'Gui bao cao va Check Out'}
+                  ? 'Đang check-out...'
+                  : 'Gửi báo cáo và Check Out'}
             </button>
           </div>
         </div>
@@ -560,13 +681,13 @@ export default function CheckInOut({ user }: { user: User }) {
       <Modal
         isOpen={!!viewingReport}
         onClose={() => setViewingReport(null)}
-        title="Chi tiet bao cao"
+        title="Chi tiết báo cáo"
         maxWidth="max-w-4xl"
       >
         {viewingReport ? (
           <div className="space-y-4">
             <div className="flex justify-between items-center text-sm text-slate-500 mb-2">
-              <span>Ngay: {viewingReport.date}</span>
+              <span>Ngày: {viewingReport.date}</span>
             </div>
 
             <div
@@ -580,7 +701,7 @@ export default function CheckInOut({ user }: { user: User }) {
                 onClick={() => setViewingReport(null)}
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
               >
-                Dong
+                Đóng
               </button>
               <button
                 type="button"
@@ -588,7 +709,7 @@ export default function CheckInOut({ user }: { user: User }) {
                 className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
               >
                 <Edit3 className="w-4 h-4 mr-1 inline" />
-                Chinh sua
+                Chỉnh sửa
               </button>
             </div>
           </div>

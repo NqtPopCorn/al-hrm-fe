@@ -21,6 +21,7 @@ interface ApiAttendanceRecord {
     gps?: { lat: number; lng: number };
   };
   status: AttendanceStatus;
+  statusReasonCode?: string | null;
   dailyReportId?: string | null;
   manualAdjustmentReason?: string | null;
 }
@@ -58,6 +59,7 @@ export interface AttendanceCheckInPayload {
   requestedMode: WorkMode;
   publicIp?: string;
   wifiSsid?: string;
+  gps?: { lat: number; lng: number };
 }
 
 export interface AttendanceCheckOutPayload {
@@ -69,6 +71,7 @@ export interface AttendanceCheckOutPayload {
   requestedMode: WorkMode;
   publicIp?: string;
   wifiSsid?: string;
+  gps?: { lat: number; lng: number };
 }
 
 export interface AttendanceSummaryParams {
@@ -141,6 +144,7 @@ function normalizeAttendance(record: ApiAttendanceRecord): AttendanceRecord {
         ? `${record.workLocationMetadata.gps.lat}, ${record.workLocationMetadata.gps.lng}`
         : undefined),
     status: record.status,
+    statusReasonCode: record.statusReasonCode ?? null,
     workdayCoefficient:
       record.status === 'INVALID' || record.status === 'MISSING_CHECKOUT'
         ? 0
