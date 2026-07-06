@@ -183,15 +183,11 @@ function getImportRowErrors(error: unknown): EmployeeImportRowError[] {
 }
 
 function getRoleScopeCopy(userRole: Role) {
-  if (userRole === 'HR Admin') {
-    return 'This live directory is still limited to Super Admin while backend role scopes are being expanded.';
-  }
-
   if (userRole === 'Manager') {
-    return 'Team-scoped employee records are planned, but the backend currently exposes this data to Super Admin only.';
+    return 'Team-scoped employee records are supported by the backend, but this frontend view still keeps manager access hidden until the broader workflow is wired safely.';
   }
 
-  return 'This screen is temporarily limited while employee self-service endpoints are still being added.';
+  return 'This screen is temporarily limited while employee self-service identity mapping is still being added.';
 }
 
 function getDepartmentName(
@@ -206,7 +202,8 @@ function getPosition(positions: Position[], positionId: string | null) {
 }
 
 export default function Employees({ userRole }: { userRole: Role }) {
-  const isSuperAdmin = userRole === 'Super Admin';
+  const canAccessEmployeeDirectory =
+    userRole === 'Super Admin' || userRole === 'HR Admin';
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
     null,
   );
@@ -259,7 +256,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
     isUpdatingSensitive,
     isImporting,
   } = useEmployees({
-    enabled: isSuperAdmin,
+    enabled: canAccessEmployeeDirectory,
     search: searchQuery.trim() || undefined,
     departmentId: filterDepartment || undefined,
     positionId: filterPosition || undefined,
@@ -271,13 +268,13 @@ export default function Employees({ userRole }: { userRole: Role }) {
     isLoading: isDepartmentsLoading,
     isFetching: isDepartmentsFetching,
     error: departmentsError,
-  } = useDepartments({ enabled: isSuperAdmin });
+  } = useDepartments({ enabled: canAccessEmployeeDirectory });
   const {
     positions,
     isLoading: isPositionsLoading,
     isFetching: isPositionsFetching,
     error: positionsError,
-  } = usePositions({ enabled: isSuperAdmin });
+  } = usePositions({ enabled: canAccessEmployeeDirectory });
 
   const selectedEmployee =
     employees.find(employee => employee.id === selectedEmployeeId) ?? null;
@@ -325,7 +322,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
   }, [searchQuery, filterDepartment, filterPosition, limit]);
 
   useEffect(() => {
-    if (!isSuperAdmin || !selectedEmployeeId || !selectedEmployee) {
+    if (!canAccessEmployeeDirectory || !selectedEmployeeId || !selectedEmployee) {
       setSensitiveError(null);
       setIsSensitiveLoading(false);
       return;
@@ -370,7 +367,12 @@ export default function Employees({ userRole }: { userRole: Role }) {
     return () => {
       isActive = false;
     };
-  }, [employees, isSuperAdmin, selectedEmployee, selectedEmployeeId]);
+  }, [
+    canAccessEmployeeDirectory,
+    employees,
+    selectedEmployee,
+    selectedEmployeeId,
+  ]);
 
   const closeAddModal = () => {
     setIsAddModalOpen(false);
@@ -456,7 +458,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
 
     let nextSensitiveInfo = employee.sensitiveInfo ?? null;
 
-    if (isSuperAdmin && !nextSensitiveInfo) {
+    if (canAccessEmployeeDirectory && !nextSensitiveInfo) {
       try {
         nextSensitiveInfo = await getSensitiveInfo(employee.id);
         setSensitiveInfo(employee.id, nextSensitiveInfo);
@@ -569,7 +571,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
     }
   };
 
-  if (!isSuperAdmin) {
+  if (!canAccessEmployeeDirectory) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200">

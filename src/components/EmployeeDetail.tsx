@@ -74,8 +74,10 @@ export default function EmployeeDetail({
   onEdit,
   onDisable,
 }: EmployeeDetailProps) {
-  const canManageBasicInfo = userRole === 'Super Admin';
-  const canViewSensitiveInfo = userRole === 'Super Admin';
+  const canManageBasicInfo =
+    userRole === 'Super Admin' || userRole === 'HR Admin';
+  const canViewSensitiveInfo =
+    userRole === 'Super Admin' || userRole === 'HR Admin';
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
@@ -232,7 +234,7 @@ export default function EmployeeDetail({
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
                     Live salary and bank data are currently available to Super
-                    Admin only.
+                    Admin and HR Admin only in this frontend flow.
                   </p>
                 </div>
               ) : null}
