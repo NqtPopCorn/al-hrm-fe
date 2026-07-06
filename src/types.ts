@@ -44,6 +44,8 @@ export interface Department {
   name: string;
   code?: string;
   managerId?: string | null;
+  isActive?: boolean;
+  disabledAt?: string | null;
 }
 
 export interface Position {
@@ -75,6 +77,8 @@ export interface Employee {
   workStatus: EmployeeWorkStatus;
   emailStatus: CompanyEmailStatus;
   joinDate: string;
+  isActive?: boolean;
+  disabledAt?: string | null;
   sensitiveInfo?: EmployeeSensitiveInfo;
 }
 
@@ -91,6 +95,7 @@ export interface AttendanceRecord {
   ip?: string;
   location?: string;
   status: AttendanceStatus;
+  statusReasonCode?: string | null;
   workdayCoefficient: number;
   dailyReportId?: string | null;
   manualAdjustmentReason?: string | null;
@@ -151,6 +156,59 @@ export interface ShiftConfig {
   breakEndTime: string;
   standardHours: number;
   minWorkingDaysPerMonth: number;
+}
+
+export interface PayrollBankSnapshot {
+  bankId?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountName?: string | null;
+}
+
+export interface PayrollAttendanceSummary {
+  totalAttendances: number;
+  payableAttendances: number;
+  workedMinutes: number;
+  workedDayEquivalent: number;
+}
+
+export interface PayrollItem {
+  id: string;
+  periodId: string;
+  periodCode: string;
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  departmentId?: string | null;
+  positionId?: string | null;
+  baseSalarySnapshot: number;
+  bankSnapshot: PayrollBankSnapshot;
+  attendanceSummary: PayrollAttendanceSummary;
+  standardWorkingDays: number;
+  grossSalary: number;
+  netSalary: number;
+  calculatedAt?: string | null;
+}
+
+export interface PayrollPeriod {
+  id: string;
+  code: string;
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  status: PayrollStatus;
+  standardWorkingDays: number;
+  calculatedBy?: string | null;
+  calculatedAt?: string | null;
+  hrReviewedBy?: string | null;
+  hrReviewedAt?: string | null;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  paidBy?: string | null;
+  paidAt?: string | null;
+}
+
+export interface PayrollPeriodDetail extends PayrollPeriod {
+  items: PayrollItem[];
 }
 
 export interface PayrollRecord {

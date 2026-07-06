@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertCircle, CheckCircle, Edit3, Eye, FileText, MapPin } from 'lucide-react';
 
 import Modal from '../components/Modal';
+import { getAttendanceStatusMeta } from '../lib/attendance-status';
 import { useAttendance } from '../hooks/useAttendance';
 import { useDailyReports } from '../hooks/useDailyReports';
 import { useEmployees } from '../hooks/useEmployees';
@@ -139,7 +140,7 @@ export default function Attendance({ user }: { user: User }) {
     }
 
     if (!adjustReason.trim()) {
-      setPageActionError('Vui long nhap ly do dieu chinh.');
+      setPageActionError('Vui lòng nhập lý do điều chỉnh.');
       return;
     }
 
@@ -194,7 +195,7 @@ export default function Attendance({ user }: { user: User }) {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-800">
-            Quan ly cham cong
+            Quản lý chấm công
           </h2>
         </div>
         <div className="p-6 bg-slate-50/40">
@@ -217,7 +218,7 @@ export default function Attendance({ user }: { user: User }) {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col col-span-1 md:col-span-3 h-[calc(100vh-10rem)]">
           <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
             <div>
-              <h3 className="font-semibold text-sm">Quan ly cham cong cong ty</h3>
+              <h3 className="font-semibold text-sm">Quản lý chấm công công ty</h3>
               <p className="mt-1 text-xs text-slate-500">Month: {month}</p>
               {pageError ? (
                 <p className="mt-1 text-xs text-rose-600">{pageError}</p>
@@ -233,7 +234,7 @@ export default function Attendance({ user }: { user: User }) {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Danh sach cham cong
+                Danh sách chấm công
               </button>
               <button
                 onClick={() => setViewMode('requests')}
@@ -243,7 +244,7 @@ export default function Attendance({ user }: { user: User }) {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Yeu cau ngoai le
+                Yêu cầu ngoại lệ
               </button>
               <button
                 onClick={() => setViewMode('reports')}
@@ -254,7 +255,7 @@ export default function Attendance({ user }: { user: User }) {
                 }`}
               >
                 <FileText className="w-3.5 h-3.5 mr-1" />
-                Bao cao nhan vien
+                Báo cáo nhân viên
               </button>
             </div>
           </div>
@@ -262,7 +263,7 @@ export default function Attendance({ user }: { user: User }) {
             {viewMode === 'reports' ? (
               <div className="p-6">
                 {isLoading && reports.length === 0 ? (
-                  <p className="text-sm text-slate-500">Dang tai du lieu...</p>
+                  <p className="text-sm text-slate-500">Đang tải dữ liệu...</p>
                 ) : null}
                 <div className="space-y-4">
                   {reports.map(report => (
@@ -276,7 +277,7 @@ export default function Attendance({ user }: { user: User }) {
                             {employeeMap.get(report.employeeId) ?? report.employeeId}
                           </h4>
                           <p className="text-xs text-slate-500">
-                            Bao cao ngay {report.date} - Lan sua cuoi:{' '}
+                            Báo cáo ngày {report.date} - Lần sửa cuối:{' '}
                             {new Date(report.updatedAt).toLocaleString()}
                           </p>
                         </div>
@@ -285,7 +286,7 @@ export default function Attendance({ user }: { user: User }) {
                           className="text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center text-xs font-medium bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded"
                         >
                           <Eye className="w-4 h-4 mr-1" />
-                          Xem chi tiet
+                          Xem chi tiết
                         </button>
                       </div>
                       <div
@@ -297,7 +298,7 @@ export default function Attendance({ user }: { user: User }) {
                   {!isLoading && reports.length === 0 ? (
                     <div className="text-center py-12 text-slate-500">
                       <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                      <p>Chua co bao cao nao</p>
+                      <p>Chưa có báo cáo nào</p>
                     </div>
                   ) : null}
                 </div>
@@ -306,11 +307,11 @@ export default function Attendance({ user }: { user: User }) {
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
                   <tr>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Nhan vien</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Ngay</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Ly do dieu chinh</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Trang thai</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Thao tac</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Nhân viên</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Ngày</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Lý do điều chỉnh</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Trạng thái</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -338,7 +339,7 @@ export default function Attendance({ user }: { user: User }) {
                           onClick={() => openApproveModal(request)}
                           className="text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center text-xs font-medium"
                         >
-                          Chi tiet
+                          Chi tiết
                         </button>
                       </td>
                     </tr>
@@ -346,7 +347,7 @@ export default function Attendance({ user }: { user: User }) {
                   {!isLoading && adjustmentRequests.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
-                        Chua co adjustment request nao.
+                        Chưa có adjustment request nào.
                       </td>
                     </tr>
                   ) : null}
@@ -356,17 +357,19 @@ export default function Attendance({ user }: { user: User }) {
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
                   <tr>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Nhan vien</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Ngay</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Nhân viên</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Ngày</th>
                     <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Check In</th>
                     <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Check Out</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Vi tri</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Trang thai</th>
-                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Thao tac</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Vị trí</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Trạng thái</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {records.map(record => (
+                  {records.map(record => {
+                    const statusMeta = getAttendanceStatusMeta(record);
+                    return (
                     <tr key={record.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 text-sm font-medium text-slate-900">
                         {employeeMap.get(record.employeeId) ?? record.employeeId}
@@ -381,16 +384,21 @@ export default function Attendance({ user }: { user: User }) {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${getStatusBadgeClasses(record.status)}`}
-                        >
-                          {record.status === 'VALID' ? (
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                          ) : (
-                            <AlertCircle className="w-3 h-3 mr-1" />
-                          )}
-                          {record.status}
-                        </span>
+                        <div className="space-y-1">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${getStatusBadgeClasses(record.status)}`}
+                          >
+                            {record.status === 'VALID' ? (
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                            ) : (
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                            )}
+                            {statusMeta.label}
+                          </span>
+                          <p className="max-w-[14rem] text-xs text-slate-500">
+                            {statusMeta.detail}
+                          </p>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
@@ -398,15 +406,16 @@ export default function Attendance({ user }: { user: User }) {
                           className="text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center text-xs font-medium"
                         >
                           <Edit3 className="w-3 h-3 mr-1" />
-                          Dieu chinh
+                          Điều chỉnh
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {!isLoading && records.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
-                        Chua co du lieu attendance cong ty cho thang nay.
+                        Chưa có dữ liệu attendance công ty cho tháng này.
                       </td>
                     </tr>
                   ) : null}
@@ -420,7 +429,7 @@ export default function Attendance({ user }: { user: User }) {
       <Modal
         isOpen={isAdjustModalOpen}
         onClose={() => setIsAdjustModalOpen(false)}
-        title="Dieu chinh cham cong"
+        title="Điều chỉnh chấm công"
       >
         {selectedRecord ? (
           <div className="space-y-4">
@@ -432,18 +441,18 @@ export default function Attendance({ user }: { user: User }) {
 
             <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4 text-sm text-slate-700">
               <div className="flex justify-between mb-1">
-                <span className="font-medium">Ngay:</span>
+                <span className="font-medium">Ngày:</span>
                 <span>{selectedRecord.date}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">Trang thai hien tai:</span>
+                <span className="font-medium">Trạng thái hiện tại:</span>
                 <span>{selectedRecord.status}</span>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Gio Check In</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Giờ Check In</label>
                 <input
                   type="time"
                   value={adjustCheckIn}
@@ -452,7 +461,7 @@ export default function Attendance({ user }: { user: User }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Gio Check Out</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Giờ Check Out</label>
                 <input
                   type="time"
                   value={adjustCheckOut}
@@ -475,13 +484,13 @@ export default function Attendance({ user }: { user: User }) {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Ly do dieu chinh</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Lý do điều chỉnh</label>
               <textarea
                 rows={3}
                 value={adjustReason}
                 onChange={event => setAdjustReason(event.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none"
-                placeholder="Ly do dieu chinh..."
+                placeholder="Lý do điều chỉnh..."
               />
             </div>
 
@@ -491,7 +500,7 @@ export default function Attendance({ user }: { user: User }) {
                 onClick={() => setIsAdjustModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
               >
-                Huy
+                Hủy
               </button>
               <button
                 type="button"
@@ -499,7 +508,7 @@ export default function Attendance({ user }: { user: User }) {
                 disabled={isAdjusting}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
               >
-                {isAdjusting ? 'Dang luu...' : 'Luu dieu chinh'}
+                {isAdjusting ? 'Đang lưu...' : 'Lưu điều chỉnh'}
               </button>
             </div>
           </div>
@@ -509,7 +518,7 @@ export default function Attendance({ user }: { user: User }) {
       <Modal
         isOpen={isApproveModalOpen}
         onClose={() => setIsApproveModalOpen(false)}
-        title="Chi tiet yeu cau ngoai le"
+        title="Chi tiết yêu cầu ngoại lệ"
       >
         {selectedRequest ? (
           <div className="space-y-4">
@@ -520,23 +529,23 @@ export default function Attendance({ user }: { user: User }) {
             ) : null}
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm text-slate-700 space-y-2">
               <div className="flex justify-between">
-                <span className="font-medium">Nhan vien:</span>
+                <span className="font-medium">Nhân viên:</span>
                 <span>{employeeMap.get(selectedRequest.employeeId) ?? selectedRequest.employeeId}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">Ngay dieu chinh:</span>
+                <span className="font-medium">Ngày điều chỉnh:</span>
                 <span>{selectedRequest.workDate}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">Gio Check In de xuat:</span>
+                <span className="font-medium">Giờ Check In đề xuất:</span>
                 <span className="font-mono">{selectedRequest.requestedCheckIn || '--:--'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">Gio Check Out de xuat:</span>
+                <span className="font-medium">Giờ Check Out đề xuất:</span>
                 <span className="font-mono">{selectedRequest.requestedCheckOut || '--:--'}</span>
               </div>
               <div className="pt-2 mt-2 border-t border-slate-200">
-                <span className="font-medium block mb-1">Ly do cua nhan vien:</span>
+                <span className="font-medium block mb-1">Lý do của nhân viên:</span>
                 <p className="text-slate-600 bg-white p-2 rounded border border-slate-100">{selectedRequest.reason}</p>
               </div>
             </div>
@@ -544,10 +553,10 @@ export default function Attendance({ user }: { user: User }) {
             {selectedRequest.status !== 'PENDING' ? (
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm text-blue-800 space-y-2">
                 <h4 className="font-semibold text-blue-900 mb-2 border-b border-blue-200 pb-1">
-                  Lich su phe duyet
+                  Lịch sử phê duyệt
                 </h4>
                 <div className="flex justify-between">
-                  <span className="font-medium">Trang thai:</span>
+                  <span className="font-medium">Trạng thái:</span>
                   <span className="font-bold">{selectedRequest.status}</span>
                 </div>
                 <div className="flex justify-between">
@@ -556,7 +565,7 @@ export default function Attendance({ user }: { user: User }) {
                 </div>
                 {selectedRequest.reviewNote ? (
                   <div className="pt-2 mt-2 border-t border-blue-200/50">
-                    <span className="font-medium block mb-1">Ghi chu:</span>
+                    <span className="font-medium block mb-1">Ghi chú:</span>
                     <p className="bg-white/50 p-2 rounded">{selectedRequest.reviewNote}</p>
                   </div>
                 ) : null}
@@ -564,13 +573,13 @@ export default function Attendance({ user }: { user: User }) {
             ) : (
               <div className="space-y-4 pt-2 border-t border-slate-100">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Ghi chu phe duyet/tu choi</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Ghi chú phê duyệt/từ chối</label>
                   <textarea
                     rows={2}
                     value={reviewNote}
                     onChange={event => setReviewNote(event.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none"
-                    placeholder="Nhap ly do phe duyet hoac tu choi..."
+                    placeholder="Nhập lý do phê duyệt hoặc từ chối..."
                   />
                 </div>
                 <div className="flex justify-end space-x-3">
@@ -580,7 +589,7 @@ export default function Attendance({ user }: { user: User }) {
                     disabled={isApprovingAdjustmentRequest}
                     className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors border border-red-200 disabled:opacity-60"
                   >
-                    Tu choi
+                    Từ chối
                   </button>
                   <button
                     type="button"
@@ -588,7 +597,7 @@ export default function Attendance({ user }: { user: User }) {
                     disabled={isApprovingAdjustmentRequest}
                     className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:opacity-60"
                   >
-                    Phe duyet
+                    Phê duyệt
                   </button>
                 </div>
               </div>
@@ -600,19 +609,19 @@ export default function Attendance({ user }: { user: User }) {
       <Modal
         isOpen={!!viewingReport}
         onClose={() => setViewingReport(null)}
-        title="Chi tiet bao cao"
+        title="Chi tiết báo cáo"
         maxWidth="max-w-4xl"
       >
         {viewingReport ? (
           <div className="space-y-4">
             <div className="flex justify-between items-center text-sm text-slate-500 mb-2">
               <span>
-                Boi:{' '}
+                Bởi:{' '}
                 <span className="font-medium text-slate-800">
                   {employeeMap.get(viewingReport.employeeId) ?? viewingReport.employeeId}
                 </span>
               </span>
-              <span>Ngay: {viewingReport.date}</span>
+              <span>Ngày: {viewingReport.date}</span>
             </div>
 
             <div

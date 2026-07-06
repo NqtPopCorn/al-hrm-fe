@@ -44,3 +44,10 @@ export const dailyReportQueryKeys = {
   all: ['daily-reports'] as const,
   list: (scope: 'me' | 'all') => [...dailyReportQueryKeys.all, scope] as const,
 };
+
+export const payrollQueryKeys = {
+  all: ['payroll'] as const,
+  periods: () => [...payrollQueryKeys.all, 'periods'] as const,
+  period: (payrollId: string) => [...payrollQueryKeys.all, 'period', payrollId] as const,
+  mine: () => [...payrollQueryKeys.all, 'mine'] as const,
+};

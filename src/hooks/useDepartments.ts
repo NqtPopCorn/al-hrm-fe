@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
-import { departmentQueryKeys } from '../lib/query-keys';
+import { departmentQueryKeys, positionQueryKeys } from '../lib/query-keys';
 import {
   DepartmentUpsertPayload,
   employeeService,
@@ -61,6 +61,19 @@ export function useDepartments({ enabled = true }: { enabled?: boolean } = {}) {
     },
   });
 
+  const disableDepartmentMutation = useMutation({
+    mutationFn: (departmentId: string) =>
+      employeeService.disableDepartment(departmentId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: departmentQueryKeys.lists(),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: positionQueryKeys.lists(),
+      });
+    },
+  });
+
   return {
     departments: departmentsQuery.data ?? [],
     isLoading: departmentsQuery.isPending,
@@ -74,7 +87,10 @@ export function useDepartments({ enabled = true }: { enabled?: boolean } = {}) {
       departmentId: string,
       payload: Partial<DepartmentUpsertPayload>,
     ) => updateDepartmentMutation.mutateAsync({ departmentId, payload }),
+    disableDepartment: (departmentId: string) =>
+      disableDepartmentMutation.mutateAsync(departmentId),
     isCreating: createDepartmentMutation.isPending,
     isUpdating: updateDepartmentMutation.isPending,
+    isDisabling: disableDepartmentMutation.isPending,
   };
 }

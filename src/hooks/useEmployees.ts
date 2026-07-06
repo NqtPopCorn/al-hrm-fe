@@ -98,6 +98,27 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     },
   });
 
+  const disableEmployeeMutation = useMutation({
+    mutationFn: (employeeId: string) => employeeService.disableEmployee(employeeId),
+    onSuccess: async disabledEmployee => {
+      queryClient.setQueriesData<Employee[]>(
+        { queryKey: employeeQueryKeys.lists() },
+        currentEmployees =>
+          currentEmployees?.map(employee =>
+            employee.id === disabledEmployee.id
+              ? {
+                  ...disabledEmployee,
+                  sensitiveInfo: employee.sensitiveInfo,
+                }
+              : employee,
+          ) ?? currentEmployees,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: employeeQueryKeys.lists(),
+      });
+    },
+  });
+
   const getSensitiveInfo = async (employeeId: string) => {
     return queryClient.fetchQuery({
       queryKey: employeeQueryKeys.sensitive(employeeId),
@@ -170,6 +191,8 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
       employeeId: string,
       payload: Partial<EmployeeUpsertPayload>,
     ) => updateEmployeeMutation.mutateAsync({ employeeId, payload }),
+    disableEmployee: (employeeId: string) =>
+      disableEmployeeMutation.mutateAsync(employeeId),
     getSensitiveInfo,
     updateSensitiveInfo: (
       employeeId: string,
@@ -180,6 +203,7 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     setSensitiveInfo,
     isCreating: createEmployeeMutation.isPending,
     isUpdating: updateEmployeeMutation.isPending,
+    isDisabling: disableEmployeeMutation.isPending,
     isUpdatingSensitive: updateSensitiveInfoMutation.isPending,
     isImporting: importEmployeesMutation.isPending,
   };

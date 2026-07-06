@@ -74,6 +74,8 @@ interface ApiEmployee {
   workStatus: EmployeeWorkStatus;
   emailStatus: Employee['emailStatus'];
   joinDate: string;
+  isActive?: boolean;
+  disabledAt?: string | null;
 }
 
 interface ApiEmployeeSensitiveInfo {
@@ -89,6 +91,8 @@ interface ApiDepartment {
   name: string;
   code?: string;
   managerId?: string | null;
+  isActive?: boolean;
+  disabledAt?: string | null;
 }
 
 interface ApiPosition {
@@ -144,6 +148,8 @@ function normalizeEmployee(employee: ApiEmployee): Employee {
     workStatus: employee.workStatus,
     emailStatus: employee.emailStatus,
     joinDate: employee.joinDate,
+    isActive: employee.isActive,
+    disabledAt: employee.disabledAt,
   };
 }
 
@@ -169,6 +175,8 @@ function normalizeDepartment(department: ApiDepartment): Department {
     name: department.name,
     code: department.code,
     managerId: department.managerId ?? null,
+    isActive: department.isActive,
+    disabledAt: department.disabledAt,
   };
 }
 
@@ -259,6 +267,13 @@ export const employeeService = {
     return normalizeEmployee(response);
   },
 
+  async disableEmployee(employeeId: string) {
+    const response = await api.patch<ApiEmployee>(
+      `/employees/${employeeId}/disable`,
+    );
+    return normalizeEmployee(response);
+  },
+
   async updateSensitiveInfo(
     employeeId: string,
     payload: EmployeeSensitiveUpsertPayload,
@@ -294,6 +309,13 @@ export const employeeService = {
     const response = await api.patch<ApiDepartment>(
       `/departments/${departmentId}`,
       payload,
+    );
+    return normalizeDepartment(response);
+  },
+
+  async disableDepartment(departmentId: string) {
+    const response = await api.patch<ApiDepartment>(
+      `/departments/${departmentId}/disable`,
     );
     return normalizeDepartment(response);
   },
