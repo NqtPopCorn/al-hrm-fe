@@ -462,7 +462,7 @@ export default function CheckInOut({ user }: { user: User }) {
                   {!isAdjustmentRequestsLoading && adjustmentRequests.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
-                        ChÆ°a cÃ³ yÃªu cáº§u Ä‘iá»u chá»‰nh nÃ o trong thÃ¡ng nÃ y.
+                        Chưa có yêu cầu điều chỉnh nào.
                       </td>
                     </tr>
                   ) : null}

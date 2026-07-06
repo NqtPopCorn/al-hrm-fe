@@ -13,6 +13,16 @@ export interface EmployeeListParams {
   departmentId?: string;
   positionId?: string;
   status?: EmployeeWorkStatus;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface EmployeeUpsertPayload {
@@ -233,10 +243,19 @@ function toApiEmployeePatchPayload(payload: Partial<EmployeeUpsertPayload>) {
 
 export const employeeService = {
   async list(params: EmployeeListParams = {}) {
-    const response = await api.get<ApiEmployee[]>('/employees', {
+    const response = await api.get<{
+      data: ApiEmployee[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>('/employees', {
       query: params as Record<string, string | number | boolean | null | undefined>,
     });
-    return response.map(normalizeEmployee);
+    return {
+      ...response,
+      data: response.data.map(normalizeEmployee),
+    };
   },
 
   async getById(employeeId: string) {

@@ -29,6 +29,11 @@ interface ApiAttendanceRecord {
 interface ApiDailyReport {
   id: string;
   employeeId: string;
+  employeeSnapshot?: {
+    employeeId: string;
+    employeeCode: string;
+    employeeName: string;
+  };
   workDate: string;
   contentHtml: string;
   submittedAt?: string;
@@ -158,6 +163,7 @@ function normalizeDailyReport(report: ApiDailyReport): DailyReport {
   return {
     id: report.id,
     employeeId: report.employeeId,
+    employeeSnapshot: report.employeeSnapshot,
     date: report.workDate,
     content: report.contentHtml,
     createdAt: report.createdAt,

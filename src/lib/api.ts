@@ -1,3 +1,5 @@
+import axios, { AxiosError, AxiosRequestConfig } from 'axios';
+
 const DEFAULT_API_BASE_URL = 'http://localhost:4000';
 
 export class ApiError extends Error {
@@ -21,125 +23,152 @@ type Primitive = string | number | boolean;
 type QueryValue = Primitive | null | undefined;
 type QueryParams = Record<string, QueryValue>;
 
-interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
-  body?: BodyInit | object | null;
+export interface ApiRequestOptions extends Omit<AxiosRequestConfig, 'method' | 'url' | 'data' | 'params'> {
+  body?: unknown;
   query?: QueryParams;
 }
 
-function buildUrl(path: string, query?: QueryParams) {
-  const baseUrl = (
-    import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
-  ).replace(/\/$/, '');
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  const url = new URL(`${baseUrl}${normalizedPath}`);
+const axiosInstance = axios.create({
+  baseURL: (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, ''),
+  withCredentials: true,
+  headers: {
+    Accept: 'application/json',
+  },
+});
 
-  if (query) {
-    Object.entries(query).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '') {
-        return;
+let isRefreshing = false;
+let refreshSubscribers: ((error: Error | null) => void)[] = [];
+
+function onRefreshed(error: Error | null) {
+  refreshSubscribers.forEach(callback => callback(error));
+  refreshSubscribers = [];
+}
+
+axiosInstance.interceptors.response.use(
+  response => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config;
+    
+    // Ignore refresh failures or requests to auth endpoints to avoid infinite loops
+    if (error.response?.status === 401 && originalRequest && !originalRequest.url?.startsWith('/auth/')) {
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          await axios.post(
+            `${axiosInstance.defaults.baseURL}/auth/refresh`,
+            {},
+            { withCredentials: true }
+          );
+          isRefreshing = false;
+          onRefreshed(null);
+        } catch (refreshError) {
+          isRefreshing = false;
+          onRefreshed(refreshError instanceof Error ? refreshError : new Error('Refresh failed'));
+          return Promise.reject(error); // Reject with original 401
+        }
       }
 
-      url.searchParams.set(key, String(value));
-    });
+      return new Promise((resolve, reject) => {
+        refreshSubscribers.push((err: Error | null) => {
+          if (err) {
+            reject(error); // Reject with original 401 if refresh fails
+          } else {
+            resolve(axiosInstance(originalRequest));
+          }
+        });
+      });
+    }
+
+    return Promise.reject(error);
   }
-
-  return url.toString();
-}
-
-async function parseJsonSafely(response: Response) {
-  const rawBody = await response.text();
-
-  if (!rawBody) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(rawBody) as Record<string, unknown>;
-  } catch {
-    return {
-      message: rawBody,
-    };
-  }
-}
+);
 
 export async function apiRequest<T>(
+  method: string,
   path: string,
   options: ApiRequestOptions = {},
 ) {
-  const headers = new Headers(options.headers);
-  const hasJsonBody =
-    options.body !== null &&
-    options.body !== undefined &&
-    !(options.body instanceof FormData);
+  try {
+    // Clean query params (remove undefined, null, empty string)
+    let cleanedQuery: Record<string, Primitive> | undefined;
+    if (options.query) {
+      cleanedQuery = Object.fromEntries(
+        Object.entries(options.query).filter(
+          ([_, v]) => v !== undefined && v !== null && v !== ''
+        )
+      ) as Record<string, Primitive>;
+    }
 
-  if (!headers.has('Accept')) {
-    headers.set('Accept', 'application/json');
-  }
+    const requestConfig: AxiosRequestConfig = {
+      url: path,
+      method,
+      data: options.body,
+      params: cleanedQuery,
+      ...options,
+    };
 
-  if (hasJsonBody && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
+    // Explicitly set Content-Type for JSON objects, but leave it unset for FormData
+    if (
+      options.body &&
+      typeof options.body === 'object' &&
+      !(options.body instanceof FormData) &&
+      !requestConfig.headers?.['Content-Type']
+    ) {
+      requestConfig.headers = {
+        ...requestConfig.headers,
+        'Content-Type': 'application/json',
+      };
+    }
 
-  const response = await fetch(buildUrl(path, options.query), {
-    ...options,
-    credentials: 'include',
-    headers,
-    body:
-      hasJsonBody && typeof options.body !== 'string'
-        ? JSON.stringify(options.body)
-        : (options.body as BodyInit | null | undefined),
-  });
+    const response = await axiosInstance.request<T>(requestConfig);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      const payload = error.response.data as Record<string, any>;
+      const message =
+        (payload && typeof payload === 'object' && typeof payload.message === 'string' && payload.message) ||
+        error.response.statusText ||
+        'Request failed';
 
-  const payload = await parseJsonSafely(response);
-
-  if (!response.ok) {
-    const message =
-      (payload &&
-        typeof payload === 'object' &&
-        typeof payload.message === 'string' &&
-        payload.message) ||
-      response.statusText ||
-      'Request failed';
-
-    throw new ApiError(message, {
-      status: response.status,
-      code:
-        payload && typeof payload === 'object' && typeof payload.code === 'string'
-          ? payload.code
-          : undefined,
-      details: payload,
+      throw new ApiError(message, {
+        status: error.response.status,
+        code: payload && typeof payload === 'object' && typeof payload.code === 'string' ? payload.code : undefined,
+        details: payload,
+      });
+    }
+    
+    throw new ApiError(error instanceof Error ? error.message : 'Unknown error', {
+      status: 500,
     });
   }
-
-  return payload as T;
 }
 
 export const api = {
-  get<T>(path: string, options?: Omit<ApiRequestOptions, 'method' | 'body'>) {
-    return apiRequest<T>(path, { ...options, method: 'GET' });
+  get<T>(path: string, options?: Omit<ApiRequestOptions, 'body'>) {
+    return apiRequest<T>('GET', path, options);
   },
   post<T>(
     path: string,
     body?: ApiRequestOptions['body'],
-    options?: Omit<ApiRequestOptions, 'method' | 'body'>,
+    options?: Omit<ApiRequestOptions, 'body'>,
   ) {
-    return apiRequest<T>(path, { ...options, method: 'POST', body });
+    return apiRequest<T>('POST', path, { ...options, body });
   },
   put<T>(
     path: string,
     body?: ApiRequestOptions['body'],
-    options?: Omit<ApiRequestOptions, 'method' | 'body'>,
+    options?: Omit<ApiRequestOptions, 'body'>,
   ) {
-    return apiRequest<T>(path, { ...options, method: 'PUT', body });
+    return apiRequest<T>('PUT', path, { ...options, body });
   },
   patch<T>(
     path: string,
     body?: ApiRequestOptions['body'],
-    options?: Omit<ApiRequestOptions, 'method' | 'body'>,
+    options?: Omit<ApiRequestOptions, 'body'>,
   ) {
-    return apiRequest<T>(path, { ...options, method: 'PATCH', body });
+    return apiRequest<T>('PATCH', path, { ...options, body });
   },
-  delete<T>(path: string, options?: Omit<ApiRequestOptions, 'method' | 'body'>) {
-    return apiRequest<T>(path, { ...options, method: 'DELETE' });
+  delete<T>(path: string, options?: Omit<ApiRequestOptions, 'body'>) {
+    return apiRequest<T>('DELETE', path, options);
   },
 };

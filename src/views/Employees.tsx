@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Edit2, Eye, Mail, Plus, Search, Upload } from 'lucide-react';
+import { Edit2, Eye, Mail, Plus, Search, ShieldBan, Upload } from 'lucide-react';
 
 import EmployeeDetail from '../components/EmployeeDetail';
 import EmployeeImportModal from '../components/EmployeeImportModal';
@@ -58,6 +58,10 @@ const emailStatusOptions: CompanyEmailStatus[] = [
 
 function getDefaultJoinDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatWorkStatusLabel(status: EmployeeWorkStatus) {
+  return status.replace('_', ' ');
 }
 
 function createEmptyEmployeeForm(): EmployeeFormState {
@@ -218,6 +222,8 @@ export default function Employees({ userRole }: { userRole: Role }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterPosition, setFilterPosition] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSensitiveLoading, setIsSensitiveLoading] = useState(false);
@@ -229,20 +235,27 @@ export default function Employees({ userRole }: { userRole: Role }) {
   const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(
     null,
   );
+  const [employeePendingDisable, setEmployeePendingDisable] =
+    useState<Employee | null>(null);
+  const [disableError, setDisableError] = useState<string | null>(null);
 
   const {
     employees,
+    total,
+    totalPages,
     isLoading: isEmployeesLoading,
     isFetching: isEmployeesFetching,
     error: employeesError,
     createEmployee,
     updateEmployee,
+    disableEmployee,
     getSensitiveInfo,
     updateSensitiveInfo,
     setSensitiveInfo,
     importEmployees,
     isCreating,
     isUpdating,
+    isDisabling,
     isUpdatingSensitive,
     isImporting,
   } = useEmployees({
@@ -250,6 +263,8 @@ export default function Employees({ userRole }: { userRole: Role }) {
     search: searchQuery.trim() || undefined,
     departmentId: filterDepartment || undefined,
     positionId: filterPosition || undefined,
+    page,
+    limit,
   });
   const {
     departments,
@@ -268,12 +283,12 @@ export default function Employees({ userRole }: { userRole: Role }) {
     employees.find(employee => employee.id === selectedEmployeeId) ?? null;
   const selectedDepartment = selectedEmployee
     ? departments.find(
-        department => department.id === selectedEmployee.departmentId,
-      ) ?? null
+      department => department.id === selectedEmployee.departmentId,
+    ) ?? null
     : null;
   const selectedPosition = selectedEmployee
     ? positions.find(position => position.id === selectedEmployee.positionId) ??
-      null
+    null
     : null;
   const editingEmployee =
     employees.find(employee => employee.id === editingEmployeeId) ?? null;
@@ -304,6 +319,10 @@ export default function Employees({ userRole }: { userRole: Role }) {
       setSelectedEmployeeId(null);
     }
   }, [employees, isEmployeesLoading, selectedEmployee, selectedEmployeeId]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, filterDepartment, filterPosition, limit]);
 
   useEffect(() => {
     if (!isSuperAdmin || !selectedEmployeeId || !selectedEmployee) {
@@ -376,6 +395,15 @@ export default function Employees({ userRole }: { userRole: Role }) {
     setImportRowErrors([]);
   };
 
+  const closeDisableEmployeeModal = () => {
+    if (isDisabling) {
+      return;
+    }
+
+    setDisableError(null);
+    setEmployeePendingDisable(null);
+  };
+
   const handleDepartmentFilterChange = (nextDepartmentId: string) => {
     setFilterDepartment(nextDepartmentId);
     setFilterPosition('');
@@ -444,6 +472,11 @@ export default function Employees({ userRole }: { userRole: Role }) {
 
     setEmployeeForm(buildEmployeeForm(employee, nextSensitiveInfo));
     setIsEditModalOpen(true);
+  };
+
+  const openDisableEmployeeModal = (employee: Employee) => {
+    setDisableError(null);
+    setEmployeePendingDisable(employee);
   };
 
   const handleCreateEmployee = async (event: FormEvent<HTMLFormElement>) => {
@@ -522,6 +555,20 @@ export default function Employees({ userRole }: { userRole: Role }) {
     }
   };
 
+  const handleDisableEmployee = async () => {
+    if (!employeePendingDisable) {
+      return;
+    }
+
+    try {
+      setDisableError(null);
+      await disableEmployee(employeePendingDisable.id);
+      setEmployeePendingDisable(null);
+    } catch (error) {
+      setDisableError(getErrorMessage(error, 'Unable to disable employee.'));
+    }
+  };
+
   if (!isSuperAdmin) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -554,6 +601,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
         sensitiveError={sensitiveError}
         onBack={() => setSelectedEmployeeId(null)}
         onEdit={openEditModal}
+        onDisable={openDisableEmployeeModal}
       />
     );
   }
@@ -666,7 +714,10 @@ export default function Employees({ userRole }: { userRole: Role }) {
                     Department
                   </th>
                   <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Status
+                    Work Status
+                  </th>
+                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                    Email Status
                   </th>
                   <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">
                     Actions
@@ -717,13 +768,22 @@ export default function Employees({ userRole }: { userRole: Role }) {
                       </td>
                       <td className="px-6 py-4">
                         <span
-                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${
-                            employee.workStatus === 'ACTIVE'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}
+                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.workStatus === 'ACTIVE'
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-amber-100 text-amber-700'
+                            }`}
                         >
-                          {employee.workStatus}
+                          {formatWorkStatusLabel(employee.workStatus)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.isActive === false
+                            ? 'bg-slate-100 text-slate-600'
+                            : 'bg-green-100 text-green-700'
+                            }`}
+                        >
+                          {employee.isActive === false ? 'Inactive' : 'Active'}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -738,16 +798,34 @@ export default function Employees({ userRole }: { userRole: Role }) {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={event => {
-                              event.stopPropagation();
-                              void openEditModal(employee);
-                            }}
-                            className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
-                            title="Edit employee"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
+                          {employee.isActive !== false ? (
+                            <>
+                              <button
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  void openEditModal(employee);
+                                }}
+                                className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
+                                title="Edit employee"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  openDisableEmployeeModal(employee);
+                                }}
+                                className="text-xs font-medium text-rose-600 hover:text-rose-700 transition-colors"
+                                title="Disable employee"
+                              >
+                                <ShieldBan className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs font-medium text-slate-400">
+                              Disabled
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -756,6 +834,46 @@ export default function Employees({ userRole }: { userRole: Role }) {
               </tbody>
             </table>
           )}
+          {employees.length > 0 ? (
+            <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between bg-slate-50 gap-4">
+              <div className="flex items-center text-sm text-slate-500">
+                <span>
+                  Showing {Math.min((page - 1) * limit + 1, total)} to {Math.min(page * limit, total)} of {total} employees
+                </span>
+                <div className="ml-4 flex items-center gap-2">
+                  <span>Show</span>
+                  <select
+                    value={limit}
+                    onChange={e => setLimit(Number(e.target.value))}
+                    className="border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-blue-500 text-slate-700"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-3 py-1 border border-slate-200 rounded-md text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-slate-600 font-medium px-2">
+                  Page {page} of {Math.max(1, totalPages)}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || totalPages === 0}
+                  className="px-3 py-1 border border-slate-200 rounded-md text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1306,6 +1424,49 @@ export default function Employees({ userRole }: { userRole: Role }) {
               </button>
             </div>
           </form>
+        ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={!!employeePendingDisable}
+        onClose={closeDisableEmployeeModal}
+        title="Disable employee"
+      >
+        {employeePendingDisable ? (
+          <div className="space-y-4">
+            {disableError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {disableError}
+              </div>
+            ) : null}
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <p>
+                This is a soft delete.{' '}
+                <span className="font-medium">{employeePendingDisable.name}</span>{' '}
+                will remain in the system and move to the inactive state.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeDisableEmployeeModal}
+                disabled={isDisabling}
+                className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDisableEmployee()}
+                disabled={isDisabling}
+                className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-md transition-colors disabled:opacity-60"
+              >
+                {isDisabling ? 'Disabling...' : 'Disable employee'}
+              </button>
+            </div>
+          </div>
         ) : null}
       </Modal>
 

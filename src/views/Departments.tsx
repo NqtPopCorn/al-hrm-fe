@@ -9,7 +9,7 @@ import {
   DepartmentUpsertPayload,
   PositionUpsertPayload,
 } from '../services/employee.service';
-import { Department, Role } from '../types';
+import { Department, Position, Role } from '../types';
 
 type DepartmentFormState = {
   name: string;
@@ -44,6 +44,14 @@ function createEmptyPositionForm(departmentId = ''): PositionFormState {
     title: '',
     baseSalary: '',
     departmentId,
+  };
+}
+
+function createPositionForm(position: Position): PositionFormState {
+  return {
+    title: position.title,
+    baseSalary: String(position.baseSalary),
+    departmentId: position.departmentId,
   };
 }
 
@@ -98,6 +106,8 @@ export default function Departments({ userRole }: { userRole: Role }) {
   const [isEditDeptModalOpen, setIsEditDeptModalOpen] = useState(false);
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
   const [isAddPosModalOpen, setIsAddPosModalOpen] = useState(false);
+  const [isEditPosModalOpen, setIsEditPosModalOpen] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [deptForm, setDeptForm] = useState<DepartmentFormState>(
     createEmptyDepartmentForm(),
   );
@@ -110,6 +120,10 @@ export default function Departments({ userRole }: { userRole: Role }) {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmittingPosition, setIsSubmittingPosition] = useState(false);
+  const [departmentPendingDisable, setDepartmentPendingDisable] =
+    useState<Department | null>(null);
+  const [disableDepartmentError, setDisableDepartmentError] =
+    useState<string | null>(null);
 
   const {
     departments,
@@ -118,8 +132,10 @@ export default function Departments({ userRole }: { userRole: Role }) {
     error: departmentsError,
     createDepartment,
     updateDepartment,
+    disableDepartment,
     isCreating: isCreatingDepartment,
     isUpdating: isUpdatingDepartment,
+    isDisabling: isDisablingDepartment,
   } = useDepartments({ enabled: isSuperAdmin });
   const {
     positions,
@@ -127,7 +143,9 @@ export default function Departments({ userRole }: { userRole: Role }) {
     isFetching: isPositionsFetching,
     error: positionsError,
     createPosition,
+    updatePosition,
     isCreating: isCreatingPosition,
+    isUpdating: isUpdatingPosition,
   } = usePositions({ enabled: isSuperAdmin });
   const {
     employees,
@@ -148,7 +166,8 @@ export default function Departments({ userRole }: { userRole: Role }) {
     (isDepartmentsFetching || isPositionsFetching || isEmployeesFetching);
   const isSavingDepartment =
     isSubmitting || isCreatingDepartment || isUpdatingDepartment;
-  const isSavingPosition = isSubmittingPosition || isCreatingPosition;
+  const isSavingPosition =
+    isSubmittingPosition || isCreatingPosition || isUpdatingPosition;
 
   const closeAddDepartmentModal = () => {
     setIsAddDeptModalOpen(false);
@@ -169,6 +188,22 @@ export default function Departments({ userRole }: { userRole: Role }) {
     setPositionFormError(null);
   };
 
+  const closeEditPositionModal = () => {
+    setIsEditPosModalOpen(false);
+    setSelectedPosition(null);
+    setPositionForm(createEmptyPositionForm());
+    setPositionFormError(null);
+  };
+
+  const closeDisableDepartmentModal = () => {
+    if (isDisablingDepartment) {
+      return;
+    }
+
+    setDisableDepartmentError(null);
+    setDepartmentPendingDisable(null);
+  };
+
   const openAddDepartmentModal = () => {
     setDeptForm(createEmptyDepartmentForm());
     setFormError(null);
@@ -186,6 +221,18 @@ export default function Departments({ userRole }: { userRole: Role }) {
     setPositionForm(createEmptyPositionForm(departmentId));
     setPositionFormError(null);
     setIsAddPosModalOpen(true);
+  };
+
+  const openEditPositionModal = (position: Position) => {
+    setSelectedPosition(position);
+    setPositionForm(createPositionForm(position));
+    setPositionFormError(null);
+    setIsEditPosModalOpen(true);
+  };
+
+  const openDisableDepartmentModal = (department: Department) => {
+    setDisableDepartmentError(null);
+    setDepartmentPendingDisable(department);
   };
 
   const handleCreateDepartment = async (event: FormEvent<HTMLFormElement>) => {
@@ -234,6 +281,41 @@ export default function Departments({ userRole }: { userRole: Role }) {
       setPositionFormError(getErrorMessage(error, 'Unable to create position.'));
     } finally {
       setIsSubmittingPosition(false);
+    }
+  };
+
+  const handleUpdatePosition = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedPosition) {
+      return;
+    }
+
+    try {
+      setIsSubmittingPosition(true);
+      setPositionFormError(null);
+      await updatePosition(selectedPosition.id, toPositionPayload(positionForm));
+      closeEditPositionModal();
+    } catch (error) {
+      setPositionFormError(getErrorMessage(error, 'Unable to update position.'));
+    } finally {
+      setIsSubmittingPosition(false);
+    }
+  };
+
+  const handleDisableDepartment = async () => {
+    if (!departmentPendingDisable) {
+      return;
+    }
+
+    try {
+      setDisableDepartmentError(null);
+      await disableDepartment(departmentPendingDisable.id);
+      setDepartmentPendingDisable(null);
+    } catch (error) {
+      setDisableDepartmentError(
+        getErrorMessage(error, 'Unable to disable department.'),
+      );
     }
   };
 
@@ -319,17 +401,41 @@ export default function Departments({ userRole }: { userRole: Role }) {
                       <h3 className="text-lg font-semibold text-slate-800">
                         {department.name}
                       </h3>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Code: {department.code || 'N/A'}
-                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className="text-xs text-slate-500">
+                          Code: {department.code || 'N/A'}
+                        </p>
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${department.isActive === false
+                              ? 'bg-slate-100 text-slate-600'
+                              : 'bg-green-100 text-green-700'
+                            }`}
+                        >
+                          {department.isActive === false ? 'Inactive' : 'Active'}
+                        </span>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => openEditDepartmentModal(department)}
-                      className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
-                      title="Edit department"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {department.isActive !== false ? (
+                        <button
+                          onClick={() => openDisableDepartmentModal(department)}
+                          className="text-rose-600 hover:text-rose-700 transition-colors text-xs font-medium"
+                        >
+                          Disable
+                        </button>
+                      ) : (
+                        <span className="text-xs font-medium text-slate-400">
+                          Disabled
+                        </span>
+                      )}
+                      <button
+                        onClick={() => openEditDepartmentModal(department)}
+                        className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
+                        title="Edit department"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 mb-4">
@@ -353,17 +459,25 @@ export default function Departments({ userRole }: { userRole: Role }) {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                        Positions
-                      </h4>
-                      <button
-                        onClick={() => openAddPositionModal(department.id)}
-                        className="text-blue-600 hover:text-blue-800 transition-colors text-xs font-medium flex items-center"
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        Add position
-                      </button>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                          Positions
+                        </h4>
+                        <button
+                          onClick={() => openAddPositionModal(department.id)}
+                          disabled={department.isActive === false}
+                          className="text-blue-600 hover:text-blue-800 transition-colors text-xs font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add position
+                        </button>
+                      </div>
+                      {department.isActive === false ? (
+                        <p className="text-xs text-slate-400">
+                          This department is inactive. New positions cannot be added.
+                        </p>
+                      ) : null}
                     </div>
 
                     {departmentPositions.length === 0 ? (
@@ -390,9 +504,19 @@ export default function Departments({ userRole }: { userRole: Role }) {
                                   Base salary: {formatCurrency(position.baseSalary)}
                                 </p>
                               </div>
-                              <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
-                                {assigneeCount} assigned
-                              </span>
+                              <div className="flex items-start gap-2">
+                                <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
+                                  {assigneeCount} assigned
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditPositionModal(position)}
+                                  className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
+                                  title="Edit position"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -652,6 +776,124 @@ export default function Departments({ userRole }: { userRole: Role }) {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={isEditPosModalOpen}
+        onClose={closeEditPositionModal}
+        title="Edit position"
+      >
+        {selectedPosition ? (
+          <form className="space-y-4" onSubmit={handleUpdatePosition}>
+            {positionFormError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {positionFormError}
+              </div>
+            ) : null}
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <span className="font-medium">Department: </span>
+              {departments.find(
+                department => department.id === selectedPosition.departmentId,
+              )?.name || 'Unknown'}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Position title
+              </label>
+              <input
+                required
+                type="text"
+                value={positionForm.title}
+                onChange={event =>
+                  setPositionForm(currentForm => ({
+                    ...currentForm,
+                    title: event.target.value,
+                  }))
+                }
+                className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Base salary
+              </label>
+              <input
+                required
+                type="number"
+                min="0"
+                value={positionForm.baseSalary}
+                onChange={event =>
+                  setPositionForm(currentForm => ({
+                    ...currentForm,
+                    baseSalary: event.target.value,
+                  }))
+                }
+                className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              />
+            </div>
+            <div className="pt-4 flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={closeEditPositionModal}
+                disabled={isSavingPosition}
+                className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingPosition}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
+              >
+                {isSavingPosition ? 'Saving...' : 'Save changes'}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={!!departmentPendingDisable}
+        onClose={closeDisableDepartmentModal}
+        title="Disable department"
+      >
+        {departmentPendingDisable ? (
+          <div className="space-y-4">
+            {disableDepartmentError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {disableDepartmentError}
+              </div>
+            ) : null}
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <p>
+                This is a soft delete.{' '}
+                <span className="font-medium">{departmentPendingDisable.name}</span>{' '}
+                will remain visible but move to the inactive state.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeDisableDepartmentModal}
+                disabled={isDisablingDepartment}
+                className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDisableDepartment()}
+                disabled={isDisablingDepartment}
+                className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-md transition-colors disabled:opacity-60"
+              >
+                {isDisablingDepartment ? 'Disabling...' : 'Disable department'}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

@@ -240,6 +240,11 @@ export interface SalaryAdvance {
 export interface DailyReport {
   id: string;
   employeeId: string;
+  employeeSnapshot?: {
+    employeeId: string;
+    employeeCode: string;
+    employeeName: string;
+  };
   date: string;
   content: string;
   createdAt: string;

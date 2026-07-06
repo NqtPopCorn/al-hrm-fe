@@ -8,6 +8,7 @@ import {
   MapPin,
   Phone,
   Shield,
+  ShieldBan,
   UserSquare2,
 } from 'lucide-react';
 
@@ -29,6 +30,7 @@ interface EmployeeDetailProps {
   sensitiveError?: string | null;
   onBack: () => void;
   onEdit: (employee: Employee) => void;
+  onDisable?: (employee: Employee) => void;
 }
 
 function formatCurrency(amount?: number) {
@@ -56,6 +58,10 @@ function formatDate(value: string) {
   return parsedDate.toLocaleDateString('vi-VN');
 }
 
+function formatWorkStatusLabel(status: Employee['workStatus']) {
+  return status.replace('_', ' ');
+}
+
 export default function EmployeeDetail({
   employee,
   department,
@@ -66,6 +72,7 @@ export default function EmployeeDetail({
   sensitiveError = null,
   onBack,
   onEdit,
+  onDisable,
 }: EmployeeDetailProps) {
   const canManageBasicInfo = userRole === 'Super Admin';
   const canViewSensitiveInfo = userRole === 'Super Admin';
@@ -90,13 +97,25 @@ export default function EmployeeDetail({
           </div>
         </div>
         {canManageBasicInfo ? (
-          <button
-            onClick={() => onEdit(employee)}
-            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-sm font-medium hover:bg-slate-50 flex items-center transition-colors"
-          >
-            <Edit2 className="w-4 h-4 mr-2" />
-            Edit employee
-          </button>
+          <div className="flex items-center gap-3">
+            {employee.isActive !== false ? (
+              <button
+                onClick={() => onDisable?.(employee)}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-md text-sm font-medium hover:bg-rose-100 transition-colors"
+              >
+                <ShieldBan className="w-4 h-4" />
+                Disable employee
+              </button>
+            ) : null}
+            <button
+              onClick={() => onEdit(employee)}
+              disabled={employee.isActive === false}
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-sm font-medium hover:bg-slate-50 flex items-center transition-colors disabled:opacity-60"
+            >
+              <Edit2 className="w-4 h-4 mr-2" />
+              Edit employee
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -124,13 +143,22 @@ export default function EmployeeDetail({
                     {employee.role}
                   </span>
                   <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase border ${
-                      employee.workStatus === 'ACTIVE'
-                        ? 'bg-green-50 text-green-700 border-green-100'
-                        : 'bg-amber-50 text-amber-700 border-amber-100'
-                    }`}
+                    className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase border ${employee.isActive === false
+                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                      }`}
                   >
-                    {employee.workStatus}
+                    {employee.isActive === false
+                      ? 'Record inactive'
+                      : 'Record active'}
+                  </span>
+                  <span
+                    className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase border ${employee.workStatus === 'ACTIVE'
+                      ? 'bg-green-50 text-green-700 border-green-100'
+                      : 'bg-amber-50 text-amber-700 border-amber-100'
+                      }`}
+                  >
+                    {`Work ${formatWorkStatusLabel(employee.workStatus)}`}
                   </span>
                 </div>
               </div>

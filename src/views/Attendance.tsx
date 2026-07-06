@@ -4,12 +4,15 @@ import { AlertCircle, CheckCircle, Edit3, Eye, FileText, MapPin } from 'lucide-r
 import Modal from '../components/Modal';
 import { getAttendanceStatusMeta } from '../lib/attendance-status';
 import { useAttendance } from '../hooks/useAttendance';
+import { useDepartments } from '../hooks/useDepartments';
 import { useDailyReports } from '../hooks/useDailyReports';
 import { useEmployees } from '../hooks/useEmployees';
 import {
   AttendanceAdjustmentRequest,
   AttendanceRecord,
+  Department,
   DailyReport,
+  Employee,
   User,
   WorkMode,
 } from '../types';
@@ -54,6 +57,61 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function normalizeSearchText(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function getDepartmentName(
+  departments: Department[],
+  departmentId?: string | null,
+) {
+  if (!departmentId) {
+    return 'No department';
+  }
+
+  return (
+    departments.find(department => department.id === departmentId)?.name ??
+    'No department'
+  );
+}
+
+function getEmployeeSummary(
+  employeeId: string,
+  employees: Employee[],
+  departments: Department[],
+  snapshot?: DailyReport['employeeSnapshot'],
+) {
+  if (snapshot) {
+    return {
+      title: snapshot.employeeName,
+      subtitle: snapshot.employeeCode,
+      departmentId: null as string | null,
+      searchText:
+        `${snapshot.employeeName} ${snapshot.employeeCode}`.toLowerCase(),
+    };
+  }
+
+  const employee = employees.find(item => item.id === employeeId);
+
+  if (!employee) {
+    return {
+      title: employeeId,
+      subtitle: 'Unknown employee',
+      departmentId: null as string | null,
+      searchText: employeeId.toLowerCase(),
+    };
+  }
+
+  const departmentName = getDepartmentName(departments, employee.departmentId);
+
+  return {
+    title: employee.name,
+    subtitle: `${departmentName} - ${employee.code}`,
+    departmentId: employee.departmentId,
+    searchText: `${employee.name} ${employee.code} ${departmentName}`.toLowerCase(),
+  };
+}
+
 export default function Attendance({ user }: { user: User }) {
   const month = getCurrentMonth();
   const isSuperAdmin = user.role === 'Super Admin';
@@ -70,6 +128,9 @@ export default function Attendance({ user }: { user: User }) {
   const [adjustWorkMode, setAdjustWorkMode] = useState<WorkMode>('OFFICE');
   const [reviewNote, setReviewNote] = useState('');
   const [pageActionError, setPageActionError] = useState<string | null>(null);
+  const [reportSearch, setReportSearch] = useState('');
+  const [reportDepartmentId, setReportDepartmentId] = useState('');
+  const [reportMonth, setReportMonth] = useState(month);
 
   const {
     employees,
@@ -77,10 +138,16 @@ export default function Attendance({ user }: { user: User }) {
     error: employeesError,
   } = useEmployees({
     enabled: isSuperAdmin,
+    page: 1,
+    limit: 1000,
   });
-  const employeeMap = new Map(
-    employees.map(employee => [employee.id, employee.name] as const),
-  );
+  const {
+    departments,
+    isLoading: isDepartmentsLoading,
+    error: departmentsError,
+  } = useDepartments({
+    enabled: isSuperAdmin,
+  });
   const employeeIds = employees.map(employee => employee.id);
 
   const {
@@ -110,12 +177,38 @@ export default function Attendance({ user }: { user: User }) {
   });
 
   const pageError =
-    employeesError || attendanceError || adjustmentRequestsError || reportsError;
+    employeesError ||
+    departmentsError ||
+    attendanceError ||
+    adjustmentRequestsError ||
+    reportsError;
   const isLoading =
     isEmployeesLoading ||
+    isDepartmentsLoading ||
     isAttendanceLoading ||
     isAdjustmentRequestsLoading ||
     isReportsLoading;
+  const normalizedReportSearch = normalizeSearchText(reportSearch);
+  const filteredReports = reports.filter(report => {
+    const employeeSummary = getEmployeeSummary(
+      report.employeeId,
+      employees,
+      departments,
+      report.employeeSnapshot,
+    );
+    const monthMatches =
+      reportMonth.length === 0 ? true : report.date.startsWith(reportMonth);
+    const departmentMatches =
+      reportDepartmentId.length === 0
+        ? true
+        : employeeSummary.departmentId === reportDepartmentId;
+    const searchMatches =
+      normalizedReportSearch.length === 0
+        ? true
+        : employeeSummary.searchText.includes(normalizedReportSearch);
+
+    return monthMatches && departmentMatches && searchMatches;
+  });
 
   const openAdjustModal = (record: AttendanceRecord) => {
     setSelectedRecord(record);
@@ -262,11 +355,60 @@ export default function Attendance({ user }: { user: User }) {
           <div className="flex-1 overflow-auto p-0">
             {viewMode === 'reports' ? (
               <div className="p-6">
+                <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
+                      Tim nhan vien
+                    </label>
+                    <input
+                      type="text"
+                      value={reportSearch}
+                      onChange={event => setReportSearch(event.target.value)}
+                      placeholder="Ten hoac ma nhan vien"
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
+                      Phong ban
+                    </label>
+                    <select
+                      value={reportDepartmentId}
+                      onChange={event => setReportDepartmentId(event.target.value)}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      <option value="">Tat ca phong ban</option>
+                      {departments.map(department => (
+                        <option key={department.id} value={department.id}>
+                          {department.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
+                      Thang bao cao
+                    </label>
+                    <input
+                      type="month"
+                      value={reportMonth}
+                      onChange={event => setReportMonth(event.target.value)}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                </div>
                 {isLoading && reports.length === 0 ? (
                   <p className="text-sm text-slate-500">Đang tải dữ liệu...</p>
                 ) : null}
                 <div className="space-y-4">
-                  {reports.map(report => (
+                  {filteredReports.map(report => {
+                    const employeeSummary = getEmployeeSummary(
+                      report.employeeId,
+                      employees,
+                      departments,
+                    );
+
+                    return (
                     <div
                       key={report.id}
                       className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow"
@@ -274,8 +416,11 @@ export default function Attendance({ user }: { user: User }) {
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <h4 className="font-semibold text-slate-800">
-                            {employeeMap.get(report.employeeId) ?? report.employeeId}
+                            {employeeSummary.title}
                           </h4>
+                          <p className="mt-1 text-xs font-medium text-slate-500">
+                            {employeeSummary.subtitle}
+                          </p>
                           <p className="text-xs text-slate-500">
                             Báo cáo ngày {report.date} - Lần sửa cuối:{' '}
                             {new Date(report.updatedAt).toLocaleString()}
@@ -294,8 +439,9 @@ export default function Attendance({ user }: { user: User }) {
                         dangerouslySetInnerHTML={{ __html: report.content }}
                       />
                     </div>
-                  ))}
-                  {!isLoading && reports.length === 0 ? (
+                  );
+                  })}
+                  {!isLoading && filteredReports.length === 0 ? (
                     <div className="text-center py-12 text-slate-500">
                       <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3" />
                       <p>Chưa có báo cáo nào</p>
@@ -318,7 +464,7 @@ export default function Attendance({ user }: { user: User }) {
                   {adjustmentRequests.map(request => (
                     <tr key={request.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                        {employeeMap.get(request.employeeId) ?? request.employeeId}
+                        {getEmployeeSummary(request.employeeId, employees, departments).title}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium">{request.workDate}</td>
                       <td
@@ -372,7 +518,7 @@ export default function Attendance({ user }: { user: User }) {
                     return (
                     <tr key={record.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                        {employeeMap.get(record.employeeId) ?? record.employeeId}
+                        {getEmployeeSummary(record.employeeId, employees, departments).title}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium">{record.date}</td>
                       <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</td>
@@ -530,7 +676,13 @@ export default function Attendance({ user }: { user: User }) {
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm text-slate-700 space-y-2">
               <div className="flex justify-between">
                 <span className="font-medium">Nhân viên:</span>
-                <span>{employeeMap.get(selectedRequest.employeeId) ?? selectedRequest.employeeId}</span>
+                <span>
+                  {getEmployeeSummary(
+                    selectedRequest.employeeId,
+                    employees,
+                    departments,
+                  ).title}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="font-medium">Ngày điều chỉnh:</span>
@@ -618,7 +770,13 @@ export default function Attendance({ user }: { user: User }) {
               <span>
                 Bởi:{' '}
                 <span className="font-medium text-slate-800">
-                  {employeeMap.get(viewingReport.employeeId) ?? viewingReport.employeeId}
+                  {
+                    getEmployeeSummary(
+                      viewingReport.employeeId,
+                      employees,
+                      departments,
+                    ).title
+                  }
                 </span>
               </span>
               <span>Ngày: {viewingReport.date}</span>

@@ -94,7 +94,6 @@ const navItems: NavItem[] = [
     label: 'Cài đặt',
     icon: Settings,
     roles: ['Super Admin'],
-    hiddenFromMainNav: true,
   },
 ];
 
