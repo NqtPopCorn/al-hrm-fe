@@ -145,8 +145,9 @@ function getPageNotice(userRole: Role) {
 
 export default function Payroll({ userRole }: { userRole: Role }) {
   const isSuperAdmin = userRole === 'Super Admin';
+  const isHrAdmin = userRole === 'HR Admin';
   const isEmployee = userRole === 'Employee';
-  const canUseLiveAdminPayroll = isSuperAdmin;
+  const canUseLiveAdminPayroll = isSuperAdmin || isHrAdmin;
   const canUseLiveSelfPayroll = isEmployee;
 
   const [activeTab, setActiveTab] = useState<PayrollTab>(
