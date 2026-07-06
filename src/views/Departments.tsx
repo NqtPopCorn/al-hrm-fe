@@ -114,19 +114,25 @@ export default function Departments({ userRole }: { userRole: Role }) {
   const {
     departments,
     isLoading: isDepartmentsLoading,
+    isFetching: isDepartmentsFetching,
     error: departmentsError,
     createDepartment,
     updateDepartment,
+    isCreating: isCreatingDepartment,
+    isUpdating: isUpdatingDepartment,
   } = useDepartments({ enabled: isSuperAdmin });
   const {
     positions,
     isLoading: isPositionsLoading,
+    isFetching: isPositionsFetching,
     error: positionsError,
     createPosition,
+    isCreating: isCreatingPosition,
   } = usePositions({ enabled: isSuperAdmin });
   const {
     employees,
     isLoading: isEmployeesLoading,
+    isFetching: isEmployeesFetching,
     error: employeesError,
   } = useEmployees({ enabled: isSuperAdmin });
 
@@ -137,6 +143,12 @@ export default function Departments({ userRole }: { userRole: Role }) {
   const pageError = departmentsError || positionsError || employeesError;
   const isPageLoading =
     isDepartmentsLoading || isPositionsLoading || isEmployeesLoading;
+  const isPageSyncing =
+    !isPageLoading &&
+    (isDepartmentsFetching || isPositionsFetching || isEmployeesFetching);
+  const isSavingDepartment =
+    isSubmitting || isCreatingDepartment || isUpdatingDepartment;
+  const isSavingPosition = isSubmittingPosition || isCreatingPosition;
 
   const closeAddDepartmentModal = () => {
     setIsAddDeptModalOpen(false);
@@ -250,9 +262,16 @@ export default function Departments({ userRole }: { userRole: Role }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
       <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-800">
-          Departments and positions
-        </h2>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">
+            Departments and positions
+          </h2>
+          {isPageSyncing ? (
+            <p className="mt-1 text-xs font-medium text-blue-600">
+              Syncing latest department data...
+            </p>
+          ) : null}
+        </div>
         <button
           onClick={openAddDepartmentModal}
           className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 flex items-center transition-colors"
@@ -458,16 +477,17 @@ export default function Departments({ userRole }: { userRole: Role }) {
             <button
               type="button"
               onClick={closeAddDepartmentModal}
+              disabled={isSavingDepartment}
               className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSavingDepartment}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
             >
-              {isSubmitting ? 'Saving...' : 'Create department'}
+              {isSavingDepartment ? 'Saving...' : 'Create department'}
             </button>
           </div>
         </form>
@@ -545,16 +565,17 @@ export default function Departments({ userRole }: { userRole: Role }) {
               <button
                 type="button"
                 onClick={closeEditDepartmentModal}
+                disabled={isSavingDepartment}
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSavingDepartment}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
               >
-                {isSubmitting ? 'Saving...' : 'Save changes'}
+                {isSavingDepartment ? 'Saving...' : 'Save changes'}
               </button>
             </div>
           </form>
@@ -617,16 +638,17 @@ export default function Departments({ userRole }: { userRole: Role }) {
             <button
               type="button"
               onClick={closeAddPositionModal}
+              disabled={isSavingPosition}
               className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isSubmittingPosition}
+              disabled={isSavingPosition}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
             >
-              {isSubmittingPosition ? 'Saving...' : 'Create position'}
+              {isSavingPosition ? 'Saving...' : 'Create position'}
             </button>
           </div>
         </form>

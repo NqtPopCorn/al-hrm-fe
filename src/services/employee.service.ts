@@ -36,6 +36,18 @@ export interface EmployeeSensitiveUpsertPayload {
   bankAccountName?: string;
 }
 
+export interface EmployeeImportRowError {
+  row: number;
+  field: string;
+  value?: string;
+  message: string;
+}
+
+export interface EmployeeImportResponse {
+  insertedCount: number;
+  fileName: string;
+}
+
 export interface DepartmentUpsertPayload {
   name: string;
   code?: string;
@@ -256,6 +268,13 @@ export const employeeService = {
       payload,
     );
     return normalizeSensitiveInfo(response);
+  },
+
+  async importEmployees(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return api.post<EmployeeImportResponse>('/employees/import', formData);
   },
 
   async listDepartments() {

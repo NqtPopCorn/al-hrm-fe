@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
+import { employeeQueryKeys } from '../lib/query-keys';
 import {
   employeeService,
+  EmployeeImportResponse,
+  EmployeeImportRowError,
   EmployeeListParams,
   EmployeeSensitiveUpsertPayload,
   EmployeeUpsertPayload,
@@ -10,6 +17,16 @@ import { Employee, EmployeeSensitiveInfo } from '../types';
 
 interface UseEmployeesOptions extends EmployeeListParams {
   enabled?: boolean;
+}
+
+function mergeEmployeeSensitiveInfo(
+  employee: Employee,
+  sensitiveInfo: EmployeeSensitiveInfo | null,
+) {
+  return {
+    ...employee,
+    sensitiveInfo: sensitiveInfo ?? undefined,
+  };
 }
 
 function getErrorMessage(error: unknown) {
@@ -22,138 +39,148 @@ function getErrorMessage(error: unknown) {
 
 export function useEmployees(options: UseEmployeesOptions = {}) {
   const { enabled = true, search, departmentId, positionId, status } = options;
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [isLoading, setIsLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadEmployees = async () => {
-      if (!enabled) {
-        setEmployees([]);
-        setError(null);
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        setError(null);
-        const nextEmployees = await employeeService.list({
-          search,
-          departmentId,
-          positionId,
-          status,
-        });
-
-        if (!isActive) {
-          return;
-        }
-
-        setEmployees(nextEmployees);
-      } catch (nextError) {
-        if (!isActive) {
-          return;
-        }
-
-        setError(getErrorMessage(nextError));
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadEmployees();
-
-    return () => {
-      isActive = false;
-    };
-  }, [departmentId, enabled, positionId, search, status]);
+  const queryClient = useQueryClient();
+  const filters = {
+    search,
+    departmentId,
+    positionId,
+    status,
+  };
+  const employeesQuery = useQuery({
+    queryKey: employeeQueryKeys.list(filters),
+    queryFn: () => employeeService.list(filters),
+    enabled,
+    placeholderData: previousData => previousData,
+  });
 
   const refresh = async () => {
     if (!enabled) {
-      setEmployees([]);
-      setError(null);
-      setIsLoading(false);
       return [];
     }
 
-    try {
-      setIsLoading(true);
-      setError(null);
-      const nextEmployees = await employeeService.list({
-        search,
-        departmentId,
-        positionId,
-        status,
+    const result = await employeesQuery.refetch();
+    return result.data ?? [];
+  };
+
+  const createEmployeeMutation = useMutation({
+    mutationFn: (payload: EmployeeUpsertPayload) => employeeService.create(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: employeeQueryKeys.lists(),
       });
-      setEmployees(nextEmployees);
-      return nextEmployees;
-    } catch (nextError) {
-      setError(getErrorMessage(nextError));
-      throw nextError;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+  });
 
-  const createEmployee = async (payload: EmployeeUpsertPayload) => {
-    const createdEmployee = await employeeService.create(payload);
-    setEmployees(currentEmployees => [createdEmployee, ...currentEmployees]);
-    return createdEmployee;
-  };
-
-  const updateEmployee = async (
-    employeeId: string,
-    payload: Partial<EmployeeUpsertPayload>,
-  ) => {
-    const updatedEmployee = await employeeService.update(employeeId, payload);
-    setEmployees(currentEmployees =>
-      currentEmployees.map(employee =>
-        employee.id === employeeId ? updatedEmployee : employee,
-      ),
-    );
-    return updatedEmployee;
-  };
+  const updateEmployeeMutation = useMutation({
+    mutationFn: ({
+      employeeId,
+      payload,
+    }: {
+      employeeId: string;
+      payload: Partial<EmployeeUpsertPayload>;
+    }) => employeeService.update(employeeId, payload),
+    onSuccess: async updatedEmployee => {
+      queryClient.setQueriesData<Employee[]>(
+        { queryKey: employeeQueryKeys.lists() },
+        currentEmployees =>
+          currentEmployees?.map(employee =>
+            employee.id === updatedEmployee.id
+              ? {
+                  ...updatedEmployee,
+                  sensitiveInfo: employee.sensitiveInfo,
+                }
+              : employee,
+          ) ?? currentEmployees,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: employeeQueryKeys.lists(),
+      });
+    },
+  });
 
   const getSensitiveInfo = async (employeeId: string) => {
-    return employeeService.getSensitiveInfo(employeeId);
+    return queryClient.fetchQuery({
+      queryKey: employeeQueryKeys.sensitive(employeeId),
+      queryFn: () => employeeService.getSensitiveInfo(employeeId),
+    });
   };
 
-  const updateSensitiveInfo = async (
-    employeeId: string,
-    payload: EmployeeSensitiveUpsertPayload,
-  ) => {
-    return employeeService.updateSensitiveInfo(employeeId, payload);
-  };
+  const updateSensitiveInfoMutation = useMutation({
+    mutationFn: ({
+      employeeId,
+      payload,
+    }: {
+      employeeId: string;
+      payload: EmployeeSensitiveUpsertPayload;
+    }) => employeeService.updateSensitiveInfo(employeeId, payload),
+    onSuccess: async (sensitiveInfo, variables) => {
+      queryClient.setQueryData(
+        employeeQueryKeys.sensitive(variables.employeeId),
+        sensitiveInfo,
+      );
+      queryClient.setQueriesData<Employee[]>(
+        { queryKey: employeeQueryKeys.lists() },
+        currentEmployees =>
+          currentEmployees?.map(employee =>
+            employee.id === variables.employeeId
+              ? mergeEmployeeSensitiveInfo(employee, sensitiveInfo)
+              : employee,
+          ) ?? currentEmployees,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: employeeQueryKeys.lists(),
+      });
+    },
+  });
+
+  const importEmployeesMutation = useMutation({
+    mutationFn: (file: File) => employeeService.importEmployees(file),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: employeeQueryKeys.lists(),
+      });
+    },
+  });
 
   const setSensitiveInfo = (
     employeeId: string,
     sensitiveInfo: EmployeeSensitiveInfo | null,
   ) => {
-    setEmployees(currentEmployees =>
-      currentEmployees.map(employee =>
-        employee.id === employeeId
-          ? {
-              ...employee,
-              sensitiveInfo: sensitiveInfo ?? undefined,
-            }
-          : employee,
-      ),
+    queryClient.setQueryData(employeeQueryKeys.sensitive(employeeId), sensitiveInfo);
+    queryClient.setQueriesData<Employee[]>(
+      { queryKey: employeeQueryKeys.lists() },
+      currentEmployees =>
+        currentEmployees?.map(employee =>
+          employee.id === employeeId
+            ? mergeEmployeeSensitiveInfo(employee, sensitiveInfo)
+            : employee,
+        ) ?? currentEmployees,
     );
   };
 
   return {
-    employees,
-    isLoading,
-    error,
+    employees: employeesQuery.data ?? [],
+    isLoading: employeesQuery.isPending,
+    isFetching: employeesQuery.isFetching,
+    error: employeesQuery.error ? getErrorMessage(employeesQuery.error) : null,
     refresh,
-    createEmployee,
-    updateEmployee,
+    createEmployee: (payload: EmployeeUpsertPayload) =>
+      createEmployeeMutation.mutateAsync(payload),
+    updateEmployee: (
+      employeeId: string,
+      payload: Partial<EmployeeUpsertPayload>,
+    ) => updateEmployeeMutation.mutateAsync({ employeeId, payload }),
     getSensitiveInfo,
-    updateSensitiveInfo,
+    updateSensitiveInfo: (
+      employeeId: string,
+      payload: EmployeeSensitiveUpsertPayload,
+    ) => updateSensitiveInfoMutation.mutateAsync({ employeeId, payload }),
+    importEmployees: (file: File): Promise<EmployeeImportResponse> =>
+      importEmployeesMutation.mutateAsync(file),
     setSensitiveInfo,
+    isCreating: createEmployeeMutation.isPending,
+    isUpdating: updateEmployeeMutation.isPending,
+    isUpdatingSensitive: updateSensitiveInfoMutation.isPending,
+    isImporting: importEmployeesMutation.isPending,
   };
 }

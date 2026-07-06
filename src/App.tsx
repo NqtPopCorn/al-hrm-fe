@@ -97,15 +97,15 @@ export default function App() {
   const renderContent = () => {
     switch (currentTab) {
       case 'dashboard':
-        return <DashboardHome />;
+        return <DashboardHome user={user} />;
       case 'employees':
         return <Employees userRole={user.role} />;
       case 'departments':
         return <Departments userRole={user.role} />;
       case 'checkin':
-        return <CheckInOut userRole={user.role} />;
+        return <CheckInOut user={user} />;
       case 'attendance':
-        return <Attendance userRole={user.role} />;
+        return <Attendance user={user} />;
       case 'payroll':
         return <Payroll userRole={user.role} />;
       case 'recruitment':
@@ -115,7 +115,7 @@ export default function App() {
       case 'settings':
         return <Settings />;
       default:
-        return <DashboardHome />;
+        return <DashboardHome user={user} />;
     }
   };
 

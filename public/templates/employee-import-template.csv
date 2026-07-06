@@ -1,0 +1,2 @@
+code,fullName,personalEmail,companyEmail,phone,role,departmentCode,positionTitle,workStatus,emailStatus,joinDate
+EMP001,Nguyen Van A,nguyenvana@gmail.com,nguyenvana@company.com,0123456789,employee,ENG,Developer,ACTIVE,ACTIVE,2026-07-05

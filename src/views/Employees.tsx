@@ -1,12 +1,15 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Edit2, Eye, Mail, Plus, Search } from 'lucide-react';
+import { Edit2, Eye, Mail, Plus, Search, Upload } from 'lucide-react';
 
 import EmployeeDetail from '../components/EmployeeDetail';
+import EmployeeImportModal from '../components/EmployeeImportModal';
 import Modal from '../components/Modal';
 import { useDepartments } from '../hooks/useDepartments';
 import { useEmployees } from '../hooks/useEmployees';
 import { usePositions } from '../hooks/usePositions';
+import { ApiError } from '../lib/api';
 import {
+  EmployeeImportRowError,
   EmployeeSensitiveUpsertPayload,
   EmployeeUpsertPayload,
 } from '../services/employee.service';
@@ -150,6 +153,31 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function getImportRowErrors(error: unknown): EmployeeImportRowError[] {
+  if (!(error instanceof ApiError)) {
+    return [];
+  }
+
+  const details = error.details;
+  if (!details || typeof details !== 'object' || !('errors' in details)) {
+    return [];
+  }
+
+  const { errors } = details as { errors?: unknown };
+  if (!Array.isArray(errors)) {
+    return [];
+  }
+
+  return errors.filter(
+    (item): item is EmployeeImportRowError =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof (item as EmployeeImportRowError).row === 'number' &&
+      typeof (item as EmployeeImportRowError).field === 'string' &&
+      typeof (item as EmployeeImportRowError).message === 'string',
+  );
+}
+
 function getRoleScopeCopy(userRole: Role) {
   if (userRole === 'HR Admin') {
     return 'This live directory is still limited to Super Admin while backend role scopes are being expanded.';
@@ -180,6 +208,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
   );
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(
     null,
   );
@@ -193,16 +222,29 @@ export default function Employees({ userRole }: { userRole: Role }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSensitiveLoading, setIsSensitiveLoading] = useState(false);
   const [sensitiveError, setSensitiveError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importRowErrors, setImportRowErrors] = useState<EmployeeImportRowError[]>(
+    [],
+  );
+  const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(
+    null,
+  );
 
   const {
     employees,
     isLoading: isEmployeesLoading,
+    isFetching: isEmployeesFetching,
     error: employeesError,
     createEmployee,
     updateEmployee,
     getSensitiveInfo,
     updateSensitiveInfo,
     setSensitiveInfo,
+    importEmployees,
+    isCreating,
+    isUpdating,
+    isUpdatingSensitive,
+    isImporting,
   } = useEmployees({
     enabled: isSuperAdmin,
     search: searchQuery.trim() || undefined,
@@ -212,11 +254,13 @@ export default function Employees({ userRole }: { userRole: Role }) {
   const {
     departments,
     isLoading: isDepartmentsLoading,
+    isFetching: isDepartmentsFetching,
     error: departmentsError,
   } = useDepartments({ enabled: isSuperAdmin });
   const {
     positions,
     isLoading: isPositionsLoading,
+    isFetching: isPositionsFetching,
     error: positionsError,
   } = usePositions({ enabled: isSuperAdmin });
 
@@ -244,6 +288,11 @@ export default function Employees({ userRole }: { userRole: Role }) {
   const pageError = employeesError || departmentsError || positionsError;
   const isPageLoading =
     isEmployeesLoading || isDepartmentsLoading || isPositionsLoading;
+  const isPageSyncing =
+    !isPageLoading &&
+    (isEmployeesFetching || isDepartmentsFetching || isPositionsFetching);
+  const isSavingEmployee =
+    isSubmitting || isCreating || isUpdating || isUpdatingSensitive;
 
   useEffect(() => {
     if (
@@ -317,6 +366,16 @@ export default function Employees({ userRole }: { userRole: Role }) {
     setFormError(null);
   };
 
+  const closeImportModal = () => {
+    if (isImporting) {
+      return;
+    }
+
+    setIsImportModalOpen(false);
+    setImportError(null);
+    setImportRowErrors([]);
+  };
+
   const handleDepartmentFilterChange = (nextDepartmentId: string) => {
     setFilterDepartment(nextDepartmentId);
     setFilterPosition('');
@@ -351,8 +410,16 @@ export default function Employees({ userRole }: { userRole: Role }) {
 
   const openAddModal = () => {
     setFormError(null);
+    setImportSuccessMessage(null);
     setEmployeeForm(createEmptyEmployeeForm());
     setIsAddModalOpen(true);
+  };
+
+  const openImportModal = () => {
+    setImportError(null);
+    setImportRowErrors([]);
+    setImportSuccessMessage(null);
+    setIsImportModalOpen(true);
   };
 
   const openEditModal = async (employee: Employee) => {
@@ -438,6 +505,23 @@ export default function Employees({ userRole }: { userRole: Role }) {
     }
   };
 
+  const handleImportEmployees = async (file: File) => {
+    try {
+      setImportError(null);
+      setImportRowErrors([]);
+
+      const response = await importEmployees(file);
+      setImportSuccessMessage(
+        `Imported ${response.insertedCount} employees from ${response.fileName}.`,
+      );
+      setIsImportModalOpen(false);
+    } catch (error) {
+      setImportError(getErrorMessage(error, 'Unable to import employees.'));
+      setImportRowErrors(getImportRowErrors(error));
+      throw error;
+    }
+  };
+
   if (!isSuperAdmin) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -477,16 +561,32 @@ export default function Employees({ userRole }: { userRole: Role }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
       <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-800">
-          Employee directory
-        </h2>
-        <button
-          onClick={openAddModal}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 flex items-center transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add employee
-        </button>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">
+            Employee directory
+          </h2>
+          {isPageSyncing ? (
+            <p className="mt-1 text-xs font-medium text-blue-600">
+              Syncing latest employee data...
+            </p>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={openImportModal}
+            className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-md text-sm font-medium hover:bg-slate-50 flex items-center transition-colors"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Import employees
+          </button>
+          <button
+            onClick={openAddModal}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 flex items-center transition-colors"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add employee
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-6 bg-slate-50/50">
@@ -535,6 +635,12 @@ export default function Employees({ userRole }: { userRole: Role }) {
           {pageError ? (
             <div className="border-b border-rose-200 bg-rose-50 px-6 py-3 text-sm text-rose-700">
               {pageError}
+            </div>
+          ) : null}
+
+          {importSuccessMessage ? (
+            <div className="border-b border-emerald-200 bg-emerald-50 px-6 py-3 text-sm text-emerald-700">
+              {importSuccessMessage}
             </div>
           ) : null}
 
@@ -911,16 +1017,17 @@ export default function Employees({ userRole }: { userRole: Role }) {
             <button
               type="button"
               onClick={closeAddModal}
+              disabled={isSavingEmployee}
               className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSavingEmployee}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
             >
-              {isSubmitting ? 'Saving...' : 'Create employee'}
+              {isSavingEmployee ? 'Saving...' : 'Create employee'}
             </button>
           </div>
         </form>
@@ -1185,21 +1292,31 @@ export default function Employees({ userRole }: { userRole: Role }) {
               <button
                 type="button"
                 onClick={closeEditModal}
+                disabled={isSavingEmployee}
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSavingEmployee}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
               >
-                {isSubmitting ? 'Saving...' : 'Save changes'}
+                {isSavingEmployee ? 'Saving...' : 'Save changes'}
               </button>
             </div>
           </form>
         ) : null}
       </Modal>
+
+      <EmployeeImportModal
+        isOpen={isImportModalOpen}
+        onClose={closeImportModal}
+        onImport={handleImportEmployees}
+        isImporting={isImporting}
+        errorMessage={importError}
+        rowErrors={importRowErrors}
+      />
     </div>
   );
 }

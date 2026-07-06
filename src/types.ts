@@ -20,6 +20,8 @@ export type AttendanceStatus =
   | 'INVALID'
   | 'MANUAL_ADJUSTED';
 
+export type AdjustmentRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export type PayrollStatus =
   | 'DRAFT'
   | 'CALCULATED'
@@ -79,14 +81,36 @@ export interface Employee {
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
+  departmentId?: string | null;
   date: string;
   checkIn: string | null;
   checkOut: string | null;
+  checkInAt?: string | null;
+  checkOutAt?: string | null;
   type: WorkMode;
   ip?: string;
   location?: string;
   status: AttendanceStatus;
   workdayCoefficient: number;
+  dailyReportId?: string | null;
+  manualAdjustmentReason?: string | null;
+}
+
+export interface AttendanceAdjustmentRequest {
+  id: string;
+  employeeId: string;
+  workDate: string;
+  requestedCheckIn: string | null;
+  requestedCheckOut: string | null;
+  requestedCheckInAt?: string | null;
+  requestedCheckOutAt?: string | null;
+  reason: string;
+  status: AdjustmentRequestStatus;
+  reviewerId?: string | null;
+  reviewNote?: string | null;
+  reviewedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Candidate {
@@ -162,4 +186,5 @@ export interface DailyReport {
   content: string;
   createdAt: string;
   updatedAt: string;
+  submittedAt?: string;
 }

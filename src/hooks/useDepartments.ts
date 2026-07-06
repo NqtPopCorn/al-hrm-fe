@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
+import { departmentQueryKeys } from '../lib/query-keys';
 import {
   DepartmentUpsertPayload,
   employeeService,
@@ -15,104 +20,61 @@ function getErrorMessage(error: unknown) {
 }
 
 export function useDepartments({ enabled = true }: { enabled?: boolean } = {}) {
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [isLoading, setIsLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadDepartments = async () => {
-      if (!enabled) {
-        setDepartments([]);
-        setError(null);
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        setError(null);
-        const nextDepartments = await employeeService.listDepartments();
-
-        if (!isActive) {
-          return;
-        }
-
-        setDepartments(nextDepartments);
-      } catch (nextError) {
-        if (!isActive) {
-          return;
-        }
-
-        setError(getErrorMessage(nextError));
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadDepartments();
-
-    return () => {
-      isActive = false;
-    };
-  }, [enabled]);
+  const queryClient = useQueryClient();
+  const departmentsQuery = useQuery({
+    queryKey: departmentQueryKeys.list(),
+    queryFn: () => employeeService.listDepartments(),
+    enabled,
+  });
 
   const refresh = async () => {
     if (!enabled) {
-      setDepartments([]);
-      setError(null);
-      setIsLoading(false);
       return [];
     }
 
-    try {
-      setIsLoading(true);
-      setError(null);
-      const nextDepartments = await employeeService.listDepartments();
-      setDepartments(nextDepartments);
-      return nextDepartments;
-    } catch (nextError) {
-      setError(getErrorMessage(nextError));
-      throw nextError;
-    } finally {
-      setIsLoading(false);
-    }
+    const result = await departmentsQuery.refetch();
+    return result.data ?? [];
   };
 
-  const createDepartment = async (payload: DepartmentUpsertPayload) => {
-    const createdDepartment = await employeeService.createDepartment(payload);
-    setDepartments(currentDepartments => [
-      ...currentDepartments,
-      createdDepartment,
-    ]);
-    return createdDepartment;
-  };
+  const createDepartmentMutation = useMutation({
+    mutationFn: (payload: DepartmentUpsertPayload) =>
+      employeeService.createDepartment(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: departmentQueryKeys.lists(),
+      });
+    },
+  });
 
-  const updateDepartment = async (
-    departmentId: string,
-    payload: Partial<DepartmentUpsertPayload>,
-  ) => {
-    const updatedDepartment = await employeeService.updateDepartment(
+  const updateDepartmentMutation = useMutation({
+    mutationFn: ({
       departmentId,
       payload,
-    );
-    setDepartments(currentDepartments =>
-      currentDepartments.map(department =>
-        department.id === departmentId ? updatedDepartment : department,
-      ),
-    );
-    return updatedDepartment;
-  };
+    }: {
+      departmentId: string;
+      payload: Partial<DepartmentUpsertPayload>;
+    }) => employeeService.updateDepartment(departmentId, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: departmentQueryKeys.lists(),
+      });
+    },
+  });
 
   return {
-    departments,
-    isLoading,
-    error,
+    departments: departmentsQuery.data ?? [],
+    isLoading: departmentsQuery.isPending,
+    isFetching: departmentsQuery.isFetching,
+    error:
+      departmentsQuery.error ? getErrorMessage(departmentsQuery.error) : null,
     refresh,
-    createDepartment,
-    updateDepartment,
+    createDepartment: (payload: DepartmentUpsertPayload) =>
+      createDepartmentMutation.mutateAsync(payload),
+    updateDepartment: (
+      departmentId: string,
+      payload: Partial<DepartmentUpsertPayload>,
+    ) => updateDepartmentMutation.mutateAsync({ departmentId, payload }),
+    isCreating: createDepartmentMutation.isPending,
+    isUpdating: updateDepartmentMutation.isPending,
   };
 }
