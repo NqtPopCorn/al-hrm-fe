@@ -110,7 +110,7 @@ export default function DashboardHome({ user }: { user: User }) {
             )
             .length.toString(),
           icon: Calendar,
-          trend: 'Late, invalid, missing checkout',
+          trend: 'Đi muộn, không hợp lệ, thiếu check-out',
           color: 'text-amber-500',
           trendColor: 'text-slate-500',
         },
@@ -154,7 +154,7 @@ export default function DashboardHome({ user }: { user: User }) {
             )
             .length.toString(),
           icon: Briefcase,
-          trend: 'Late, invalid, missing checkout',
+          trend: 'Đi muộn, không hợp lệ, thiếu check-out',
           color: 'text-amber-500',
           trendColor: 'text-slate-500',
         },
@@ -306,9 +306,9 @@ export default function DashboardHome({ user }: { user: User }) {
             <ShieldCheck className="w-3.5 h-3.5" />
             Bảo mật: <span className="text-blue-600 ml-1">Cookie auth + role scopes</span>
           </span>
-          <span>Dashboard mode: {isSuperAdmin ? 'Company scope' : 'Personal scope'}</span>
+          <span>Chế độ hiển thị: {isSuperAdmin ? 'Phạm vi toàn công ty' : 'Phạm vi cá nhân'}</span>
         </div>
-        <div className="font-medium text-slate-600">Month: {month}</div>
+        <div className="font-medium text-slate-600">Tháng: {month}</div>
       </div>
     </div>
   );

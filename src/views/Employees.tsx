@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Edit2, Eye, Mail, Plus, Search, ShieldBan, Upload } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 import EmployeeDetail from '../components/EmployeeDetail';
 import EmployeeImportModal from '../components/EmployeeImportModal';
@@ -206,6 +207,7 @@ function getPosition(positions: Position[], positionId: string | null) {
 }
 
 export default function Employees({ userRole }: { userRole: Role }) {
+  const { showToast } = useToast();
   const isSuperAdmin = userRole === 'Super Admin';
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
     null,
@@ -498,6 +500,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
       }
 
       closeAddModal();
+      showToast({ type: 'success', message: `Đã thêm nhân viên ${createdEmployee.name} thành công.` });
     } catch (error) {
       setFormError(getErrorMessage(error, 'Unable to create employee.'));
     } finally {
@@ -531,6 +534,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
       }
 
       closeEditModal();
+      showToast({ type: 'success', message: `Đã cập nhật nhân viên ${updatedEmployee.name} thành công.` });
     } catch (error) {
       setFormError(getErrorMessage(error, 'Unable to update employee.'));
     } finally {
@@ -544,10 +548,11 @@ export default function Employees({ userRole }: { userRole: Role }) {
       setImportRowErrors([]);
 
       const response = await importEmployees(file);
-      setImportSuccessMessage(
-        `Imported ${response.insertedCount} employees from ${response.fileName}.`,
-      );
       setIsImportModalOpen(false);
+      showToast({
+        type: 'success',
+        message: `Đã import ${response.insertedCount} nhân viên từ file ${response.fileName}.`,
+      });
     } catch (error) {
       setImportError(getErrorMessage(error, 'Unable to import employees.'));
       setImportRowErrors(getImportRowErrors(error));
@@ -560,12 +565,16 @@ export default function Employees({ userRole }: { userRole: Role }) {
       return;
     }
 
+    const employeeName = employeePendingDisable.name;
     try {
       setDisableError(null);
       await disableEmployee(employeePendingDisable.id);
       setEmployeePendingDisable(null);
+      showToast({ type: 'success', message: `Đã vô hiệu hóa nhân viên ${employeeName}.` });
     } catch (error) {
-      setDisableError(getErrorMessage(error, 'Unable to disable employee.'));
+      const msg = getErrorMessage(error, 'Unable to disable employee.');
+      setDisableError(msg);
+      showToast({ type: 'error', message: msg });
     }
   };
 

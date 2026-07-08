@@ -22,19 +22,19 @@ export default function Recruitment() {
             onClick={() => setActiveTab('candidates')}
             className={`text-sm font-medium pb-4 -mb-4 border-b-2 transition-colors ${activeTab === 'candidates' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
-            Candidates
+            Ứng viên
           </button>
           <button 
             onClick={() => setActiveTab('interviews')}
             className={`text-sm font-medium pb-4 -mb-4 border-b-2 transition-colors ${activeTab === 'interviews' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
-            Interviews
+            Phỏng vấn
           </button>
           <button 
             onClick={() => setActiveTab('templates')}
             className={`text-sm font-medium pb-4 -mb-4 border-b-2 transition-colors ${activeTab === 'templates' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
-            Email Templates
+            Mẫu Email
           </button>
         </div>
         
@@ -43,7 +43,7 @@ export default function Recruitment() {
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center"
         >
           <UserPlus className="w-4 h-4 mr-2" />
-          Add Candidate
+          Thêm ứng viên
         </button>
       </div>
 
@@ -55,20 +55,25 @@ export default function Recruitment() {
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
                   type="text" 
-                  placeholder="Filter by skill (e.g., React, Node) or position..." 
+                  placeholder="Lọc theo kỹ năng (vd: React, Node) hoặc vị trí..." 
                   className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 />
               </div>
               <button className="px-4 py-2 bg-white border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50">
-                Match Keyword Score
+                Độ khớp từ khóa
               </button>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {['New', 'Interviewing', 'Offered', 'Hired'].map(status => (
-                <div key={status} className="bg-slate-100/50 rounded-lg p-4 border border-slate-200">
-                  <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wider">{status}</h3>
+              {[
+                { label: 'Mới', value: 'New' },
+                { label: 'Đang phỏng vấn', value: 'Interviewing' },
+                { label: 'Đã đề nghị', value: 'Offered' },
+                { label: 'Đã nhận việc', value: 'Hired' }
+              ].map(status => (
+                <div key={status.value} className="bg-slate-100/50 rounded-lg p-4 border border-slate-200">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wider">{status.label}</h3>
                   <div className="space-y-3">
-                    {mockCandidates.filter(c => c.status === status || (status === 'Interviewing' && c.status === 'Interviewing')).map(candidate => {
+                    {mockCandidates.filter(c => c.status === status.value || (status.value === 'Interviewing' && c.status === 'Interviewing')).map(candidate => {
                       const pos = mockPositions.find(p => p.id === candidate.positionId);
                       return (
                         <div key={candidate.id} className="bg-white p-3 rounded shadow-sm border border-slate-200 hover:border-blue-400 transition-colors group relative">
@@ -100,13 +105,13 @@ export default function Recruitment() {
         {activeTab === 'interviews' && (
           <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
             <CalendarIcon className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-            <p>No upcoming interviews scheduled.</p>
+            <p>Không có lịch phỏng vấn sắp tới.</p>
           </div>
         )}
 
         {activeTab === 'templates' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {['Interview Invitation', 'Thank You', 'Rejection', 'Job Offer', 'Welcome Onboard'].map(template => (
+            {['Thư mời phỏng vấn', 'Cảm ơn', 'Từ chối', 'Đề nghị nhận việc', 'Chào mừng nhân viên mới'].map(template => (
               <div key={template} className="bg-white border border-slate-200 rounded-lg p-5 hover:shadow-md transition-shadow cursor-pointer">
                 <div className="flex items-center mb-3">
                   <div className="w-8 h-8 rounded bg-blue-50 text-blue-600 flex items-center justify-center mr-3">
@@ -114,17 +119,17 @@ export default function Recruitment() {
                   </div>
                   <h3 className="text-sm font-semibold text-slate-800">{template}</h3>
                 </div>
-                <p className="text-xs text-slate-500 line-clamp-2">Standard template for {template.toLowerCase()} communications. Click to edit content and variables.</p>
+                <p className="text-xs text-slate-500 line-clamp-2">Mẫu tiêu chuẩn cho các giao tiếp {template.toLowerCase()}. Nhấp để sửa đổi nội dung và các biến.</p>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Add New Candidate">
+      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Thêm ứng viên mới">
         <form className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Full Name</label>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Họ và tên</label>
             <input type="text" className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
           </div>
           <div>
@@ -132,31 +137,31 @@ export default function Recruitment() {
             <input type="email" className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Position</label>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Vị trí</label>
             <select className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
               {mockPositions.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Skills (comma separated)</label>
-            <input type="text" placeholder="e.g., React, Node, SQL" className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
+            <label className="block text-xs font-medium text-slate-700 mb-1">Kỹ năng (cách nhau bằng dấu phẩy)</label>
+            <input type="text" placeholder="vd: React, Node, SQL" className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
           </div>
           <div className="pt-4 flex justify-end space-x-3">
             <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors">
-              Cancel
+              Hủy
             </button>
             <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors">
-              Add Candidate
+              Thêm ứng viên
             </button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Candidate">
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Chỉnh sửa ứng viên">
         {selectedCandidate && (
           <form className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Full Name</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Họ và tên</label>
               <input type="text" defaultValue={selectedCandidate.name} className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
             </div>
             <div>
@@ -164,31 +169,31 @@ export default function Recruitment() {
               <input type="email" defaultValue={selectedCandidate.email} className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Position</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Vị trí</label>
               <select defaultValue={selectedCandidate.positionId} className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
                 {mockPositions.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Status</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Trạng thái</label>
               <select defaultValue={selectedCandidate.status} className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none">
-                <option value="New">New</option>
-                <option value="Interviewing">Interviewing</option>
-                <option value="Offered">Offered</option>
-                <option value="Hired">Hired</option>
-                <option value="Rejected">Rejected</option>
+                <option value="New">Mới</option>
+                <option value="Interviewing">Đang phỏng vấn</option>
+                <option value="Offered">Đã đề nghị</option>
+                <option value="Hired">Đã nhận việc</option>
+                <option value="Rejected">Đã từ chối</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Skills (comma separated)</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Kỹ năng (cách nhau bằng dấu phẩy)</label>
               <input type="text" defaultValue={selectedCandidate.skills.join(', ')} className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
             </div>
             <div className="pt-4 flex justify-end space-x-3">
               <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors">
-                Cancel
+                Hủy
               </button>
               <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors">
-                Save Changes
+                Lưu thay đổi
               </button>
             </div>
           </form>
