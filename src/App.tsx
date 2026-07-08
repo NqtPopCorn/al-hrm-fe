@@ -7,6 +7,7 @@ import Sidebar, {
 import Header from './components/Header';
 import Login from './views/Login';
 import DashboardHome from './views/DashboardHome';
+import Accounts from './views/Accounts';
 import Employees from './views/Employees';
 import Departments from './views/Departments';
 import CheckInOut from './views/CheckInOut';
@@ -105,6 +106,8 @@ export default function App() {
     switch (currentTab) {
       case 'dashboard':
         return <DashboardHome user={user} />;
+      case 'accounts':
+        return <Accounts user={user} />;
       case 'employees':
         return <Employees userRole={user.role} />;
       case 'departments':
@@ -130,6 +133,8 @@ export default function App() {
     switch (currentTab) {
       case 'dashboard':
         return 'Tổng quan';
+      case 'accounts':
+        return 'Tài khoản';
       case 'employees':
         return 'Nhân viên';
       case 'departments':
@@ -159,9 +164,9 @@ export default function App() {
         role={user.role}
         onLogout={handleLogout}
       />
-      <div className="flex-1 flex flex-col ml-64">
+      <div className="flex-1 flex flex-col ml-64 min-w-0">
         <Header user={user} title={getPageTitle()} />
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-8">
           <div className="max-w-7xl mx-auto">{renderContent()}</div>
         </main>
       </div>

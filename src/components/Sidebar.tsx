@@ -8,12 +8,14 @@ import {
   Settings,
   LogOut,
   Building2,
+  Shield,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Role } from '../types';
 
 export type AppTab =
   | 'dashboard'
+  | 'accounts'
   | 'employees'
   | 'departments'
   | 'checkin'
@@ -44,6 +46,12 @@ const navItems: NavItem[] = [
     label: 'Tổng quan',
     icon: LayoutDashboard,
     roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
+  },
+  {
+    id: 'accounts',
+    label: 'Tài khoản',
+    icon: Shield,
+    roles: ['Super Admin'],
   },
   {
     id: 'employees',

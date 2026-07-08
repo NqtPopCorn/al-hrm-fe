@@ -1,4 +1,9 @@
 export type Role = 'Super Admin' | 'HR Admin' | 'Manager' | 'Employee';
+export type AccountStatus =
+  | 'pending_verification'
+  | 'active'
+  | 'inactive'
+  | 'banned';
 
 export type EmployeeWorkStatus =
   | 'PROBATION'
@@ -37,6 +42,18 @@ export interface User {
   name: string;
   avatar?: string;
   permissions?: string[];
+}
+
+export interface UserAccount {
+  id: string;
+  email: string;
+  fullName: string;
+  phone?: string;
+  role: Role;
+  status: AccountStatus;
+  avatar?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Department {

@@ -13,6 +13,16 @@ export const employeeQueryKeys = {
     [...employeeQueryKeys.all, 'sensitive', employeeId] as const,
 };
 
+export const userQueryKeys = {
+  all: ['users'] as const,
+  lists: () => [...userQueryKeys.all, 'list'] as const,
+  list: (filters: {
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => [...userQueryKeys.lists(), filters] as const,
+};
+
 export const departmentQueryKeys = {
   all: ['departments'] as const,
   lists: () => [...departmentQueryKeys.all, 'list'] as const,
