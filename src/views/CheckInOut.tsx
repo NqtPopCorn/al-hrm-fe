@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle, Clock, Edit3, Eye, FileText, MapPin } from 'lucide-react';
 import JoditEditor from 'jodit-react';
+import { useToast } from '../components/Toast';
 
 import Modal from '../components/Modal';
 import { getAttendanceStatusMeta } from '../lib/attendance-status';
@@ -66,6 +67,7 @@ function getAdjustmentStatusClasses(status: AttendanceAdjustmentRequest['status'
 }
 
 export default function CheckInOut({ user }: { user: User }) {
+  const { showToast } = useToast();
   const month = getCurrentMonth();
   const today = getToday();
   const [clock, setClock] = useState(() =>
@@ -181,8 +183,12 @@ export default function CheckInOut({ user }: { user: User }) {
         requestedMode: workMode,
         ...(gps ? { gps } : {}),
       });
+      const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      showToast({ type: 'success', message: `Check in lúc ${timeStr} thành công! Chúc buổi làm việc hiệu quả 💪` });
     } catch (error) {
-      setReportError(getErrorMessage(error, 'Không thể check in.'));
+      const msg = getErrorMessage(error, 'Không thể check in.');
+      setReportError(msg);
+      showToast({ type: 'error', message: msg });
     }
   };
 
@@ -197,6 +203,10 @@ export default function CheckInOut({ user }: { user: User }) {
 
       if (editingReport) {
         await updateReport(editingReport.id, reportContent);
+        setIsReportModalOpen(false);
+        setEditingReport(null);
+        setReportContent('');
+        showToast({ type: 'success', message: 'Đã cập nhật báo cáo thành công.' });
       } else {
         const gps = workMode === 'OFFICE' ? (currentGps ?? await getGps()) : null;
         await checkOut({
@@ -206,14 +216,14 @@ export default function CheckInOut({ user }: { user: User }) {
           requestedMode: workMode,
           ...(gps ? { gps } : {}),
         });
+        setIsReportModalOpen(false);
+        setEditingReport(null);
+        setReportContent('');
+        showToast({ type: 'success', message: 'Check out và nộp báo cáo thành công! Hẹn gặp lại ngày mai. 👋' });
       }
-
-      setIsReportModalOpen(false);
-      setEditingReport(null);
-      setReportContent('');
     } catch (error) {
       setReportError(
-        getErrorMessage(error, 'Unable to submit report or complete check-out.'),
+        getErrorMessage(error, 'Không thể nộp báo cáo hoặc hoàn tất check-out.'),
       );
     }
   };
@@ -242,9 +252,10 @@ export default function CheckInOut({ user }: { user: User }) {
       });
       setIsAdjustModalOpen(false);
       setViewMode('requests');
+      showToast({ type: 'success', message: 'Yêu cầu điều chỉnh đã được gửi, vui lòng chờ phê duyệt.' });
     } catch (error) {
       setAdjustError(
-        getErrorMessage(error, 'Unable to create attendance adjustment request.'),
+        getErrorMessage(error, 'Không thể tạo yêu cầu điều chỉnh chấm công.'),
       );
     }
   };
