@@ -7,7 +7,11 @@ import { useAttendance } from '../hooks/useAttendance';
 import { useDailyReports } from '../hooks/useDailyReports';
 import { useDepartments } from '../hooks/useDepartments';
 import { useEmployees } from '../hooks/useEmployees';
-import { getAttendanceStatusMeta } from '../lib/attendance-status';
+import {
+  getAttendanceStatusMeta,
+  getCheckInStatus,
+  getCheckOutStatus,
+} from '../lib/attendance-status';
 import {
   filterAndPaginateAdjustmentRequests,
   filterAndPaginateAttendanceRecords,
@@ -540,8 +544,40 @@ export default function Attendance({ user }: { user: User }) {
                           {getEmployeeSummary(record.employeeId, employees, departments).title}
                         </td>
                         <td className="px-6 py-4 text-sm font-medium">{record.date}</td>
-                        <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</td>
-                        <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkOut || '--:--'}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</span>
+                            {record.checkInAt && (
+                              <span className={`text-[10px] font-semibold mt-0.5 ${
+                                getCheckInStatus(record.checkInAt, '08:00') === 'VALID'
+                                  ? 'text-green-600'
+                                  : 'text-amber-600'
+                              }`}>
+                                {getCheckInStatus(record.checkInAt, '08:00') === 'VALID'
+                                  ? 'Đúng giờ'
+                                  : 'Đi muộn'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-mono text-slate-600">{record.checkOut || '--:--'}</span>
+                            {record.checkOutAt ? (
+                              <span className={`text-[10px] font-semibold mt-0.5 ${
+                                getCheckOutStatus(record.checkOutAt, '17:00') === 'VALID'
+                                  ? 'text-green-600'
+                                  : 'text-amber-600'
+                              }`}>
+                                {getCheckOutStatus(record.checkOutAt, '17:00') === 'VALID'
+                                  ? 'Hợp lệ'
+                                  : 'Về sớm'}
+                              </span>
+                            ) : record.checkInAt ? (
+                              <span className="text-[10px] text-slate-400 mt-0.5">Chưa check-out</span>
+                            ) : null}
+                          </div>
+                        </td>
                         <td className="px-6 py-4">
                           <div className="flex mục-center text-sm text-slate-600">
                             <MapPin className="w-4 h-4 mr-1 text-slate-400" />

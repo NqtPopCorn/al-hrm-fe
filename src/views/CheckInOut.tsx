@@ -4,9 +4,28 @@ import JoditEditor from 'jodit-react';
 import { useToast } from '../components/Toast';
 
 import Modal from '../components/Modal';
-import { getAttendanceStatusMeta } from '../lib/attendance-status';
+import {
+  getAttendanceStatusMeta,
+  getCheckInStatus,
+  getCheckOutStatus,
+} from '../lib/attendance-status';
 import { useAttendance } from '../hooks/useAttendance';
 import { useDailyReports } from '../hooks/useDailyReports';
+import { workLocationService, WorkLocationConfig } from '../services/work-location.service';
+
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 import {
   AttendanceAdjustmentRequest,
   AttendanceRecord,
@@ -88,10 +107,13 @@ export default function CheckInOut({ user }: { user: User }) {
   const [editingReport, setEditingReport] = useState<DailyReport | null>(null);
   const [currentGps, setCurrentGps] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'fetching' | 'ok' | 'denied'>('idle');
+  const [officeConfig, setOfficeConfig] = useState<WorkLocationConfig | null>(null);
+  const [detectedDistance, setDetectedDistance] = useState<number | null>(null);
 
   /** Lấy GPS hiện tại — MVP: server tin client, không validate phức tạp */
   const getGps = (): Promise<{ lat: number; lng: number } | null> => {
     if (!navigator.geolocation) return Promise.resolve(null);
+    if (currentGps) return Promise.resolve(currentGps);
     setGpsStatus('fetching');
     return new Promise(resolve => {
       navigator.geolocation.getCurrentPosition(
@@ -145,6 +167,74 @@ export default function CheckInOut({ user }: { user: User }) {
   const todayStatusMeta = todayRecord ? getAttendanceStatusMeta(todayRecord) : null;
   const pageError = attendanceError || adjustmentRequestsError || reportsError;
 
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [requestsPage, setRequestsPage] = useState(1);
+  const [reportsPage, setReportsPage] = useState(1);
+  const pageSize = 5;
+
+  useEffect(() => {
+    setRecordsPage(1);
+    setRequestsPage(1);
+    setReportsPage(1);
+  }, [viewMode, month]);
+
+  const sortedRecords = [...records].sort((a, b) => b.date.localeCompare(a.date));
+  const sortedRequests = [...adjustmentRequests].sort((a, b) => {
+    const leftTime = a.createdAt ?? a.workDate;
+    const rightTime = b.createdAt ?? b.workDate;
+    return rightTime.localeCompare(leftTime);
+  });
+  const sortedReports = [...reports].sort((a, b) => b.date.localeCompare(a.date));
+
+  const paginate = <T,>(items: T[], page: number, size: number) => {
+    const totalItems = items.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / size));
+    const safePage = Math.min(Math.max(1, page), totalPages);
+    const startIndex = (safePage - 1) * size;
+    const paginatedItems = items.slice(startIndex, startIndex + size);
+
+    return {
+      items: paginatedItems,
+      page: safePage,
+      totalPages,
+      totalItems,
+      rangeStart: totalItems === 0 ? 0 : startIndex + 1,
+      rangeEnd: totalItems === 0 ? 0 : startIndex + paginatedItems.length,
+    };
+  };
+
+  const paginatedRecords = paginate(sortedRecords, recordsPage, pageSize);
+  const paginatedRequests = paginate(sortedRequests, requestsPage, pageSize);
+  const paginatedReports = paginate(sortedReports, reportsPage, pageSize);
+
+  const activePageData =
+    viewMode === 'reports'
+      ? {
+          page: reportsPage,
+          totalPages: paginatedReports.totalPages,
+          totalItems: paginatedReports.totalItems,
+          rangeStart: paginatedReports.rangeStart,
+          rangeEnd: paginatedReports.rangeEnd,
+          setPage: setReportsPage,
+        }
+      : viewMode === 'requests'
+        ? {
+            page: requestsPage,
+            totalPages: paginatedRequests.totalPages,
+            totalItems: paginatedRequests.totalItems,
+            rangeStart: paginatedRequests.rangeStart,
+            rangeEnd: paginatedRequests.rangeEnd,
+            setPage: setRequestsPage,
+          }
+        : {
+            page: recordsPage,
+            totalPages: paginatedRecords.totalPages,
+            totalItems: paginatedRecords.totalItems,
+            rangeStart: paginatedRecords.rangeStart,
+            rangeEnd: paginatedRecords.rangeEnd,
+            setPage: setRecordsPage,
+          };
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       setClock(
@@ -156,6 +246,56 @@ export default function CheckInOut({ user }: { user: User }) {
     }, 60_000);
 
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const detectLocation = async () => {
+      try {
+        const config = await workLocationService.getActive();
+        setOfficeConfig(config);
+
+        if (navigator.geolocation) {
+          setGpsStatus('fetching');
+          navigator.geolocation.getCurrentPosition(
+            pos => {
+              const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+              setCurrentGps(coords);
+              setGpsStatus('ok');
+
+              if (config && config.gpsLat && config.gpsLng) {
+                const distance = calculateDistanceMeters(
+                  coords.lat,
+                  coords.lng,
+                  config.gpsLat,
+                  config.gpsLng
+                );
+                setDetectedDistance(distance);
+                const radius = config.gpsRadiusMeters ?? 100;
+                if (distance <= radius) {
+                  setWorkMode('OFFICE');
+                } else {
+                  setWorkMode('WFH');
+                }
+              } else {
+                setWorkMode('OFFICE');
+              }
+            },
+            () => {
+              setGpsStatus('denied');
+              setWorkMode('WFH');
+            },
+            { timeout: 5000 }
+          );
+        } else {
+          setWorkMode('OFFICE');
+        }
+      } catch (error) {
+        console.error('Failed to initialize office location:', error);
+        setWorkMode('OFFICE');
+      }
+    };
+
+    void detectLocation();
   }, []);
 
   const openAdjustModal = (record: AttendanceRecord) => {
@@ -278,25 +418,65 @@ export default function CheckInOut({ user }: { user: User }) {
           </div>
 
           <div className="w-full space-y-3">
-            <select
-              value={workMode}
-              onChange={event => setWorkMode(event.target.value as WorkMode)}
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            >
-              <option value="OFFICE">Office</option>
-              <option value="WFH">WFH</option>
-            </select>
+            <div className="space-y-1.5 text-left">
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Chế độ làm việc
+              </label>
+              <select
+                value={workMode}
+                onChange={event => setWorkMode(event.target.value as WorkMode)}
+                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white font-medium text-slate-700"
+              >
+                <option value="OFFICE">🏢 Office (Văn phòng)</option>
+                <option value="WFH">🏠 WFH (Làm việc từ xa)</option>
+              </select>
+            </div>
 
-            {workMode === 'OFFICE' && (
-              <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                {gpsStatus === 'idle' && 'GPS sẽ được lấy khi check in/out.'}
-                {gpsStatus === 'fetching' && '📡 Đang lấy GPS...'}
-                {gpsStatus === 'ok' && currentGps
-                  ? `📍 GPS: ${currentGps.lat.toFixed(5)}, ${currentGps.lng.toFixed(5)}`
-                  : null}
-                {gpsStatus === 'denied' && '⚠️ Không thể lấy GPS — sẽ bỏ qua.'}
-              </div>
-            )}
+            {/* Location Status Alert / Message */}
+            <div className="text-left">
+              {gpsStatus === 'fetching' && (
+                <div className="rounded-md border border-blue-100 bg-blue-50/50 px-3 py-2 text-xs text-blue-700 flex items-center">
+                  <span className="animate-spin mr-2">📡</span>
+                  Đang xác định vị trí của bạn...
+                </div>
+              )}
+              {gpsStatus === 'denied' && (
+                <div className="rounded-md border border-rose-100 bg-rose-50/50 px-3 py-2 text-xs text-rose-700 flex items-start">
+                  <span className="mr-1.5 mt-0.5">⚠️</span>
+                  <div>
+                    <span className="font-semibold block">Không lấy được GPS</span>
+                    Hệ thống đề xuất chế độ WFH. Bạn có thể thay đổi thủ công.
+                  </div>
+                </div>
+              )}
+              {gpsStatus === 'ok' && officeConfig && (
+                <div>
+                  {detectedDistance !== null && officeConfig.gpsRadiusMeters !== undefined ? (
+                    detectedDistance <= (officeConfig.gpsRadiusMeters ?? 100) ? (
+                      <div className="rounded-md border border-green-100 bg-green-50/50 px-3 py-2 text-xs text-green-700 flex items-start">
+                        <span className="mr-1.5 mt-0.5">📍</span>
+                        <div>
+                          <span className="font-semibold block">Đang ở văn phòng ({officeConfig.name || 'Nova Office'})</span>
+                          Bạn cách văn phòng {detectedDistance.toFixed(0)}m (trong bán kính cho phép {officeConfig.gpsRadiusMeters}m). Tự động chọn Office.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-amber-100 bg-amber-50/50 px-3 py-2 text-xs text-amber-700 flex items-start">
+                        <span className="mr-1.5 mt-0.5">🏠</span>
+                        <div>
+                          <span className="font-semibold block">Đang ở ngoài văn phòng</span>
+                          Bạn cách văn phòng {(detectedDistance / 1000).toFixed(1)} km (bán kính cho phép là {officeConfig.gpsRadiusMeters}m). Tự động chọn WFH.
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                      📍 GPS: {currentGps?.lat.toFixed(5)}, {currentGps?.lng.toFixed(5)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             <button
               onClick={() => {
@@ -336,12 +516,50 @@ export default function CheckInOut({ user }: { user: User }) {
               </div>
             </div>
             {todayRecord ? (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-                <p>Hôm nay: {todayRecord.status}</p>
-                <p className="mt-1">
-                  {todayRecord.checkIn ?? '--:--'} - {todayRecord.checkOut ?? '--:--'}
-                </p>
-                <p className="mt-1 text-slate-500">{todayStatusMeta?.detail}</p>
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 space-y-2 text-left w-full">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-slate-700">Trạng thái ngày:</span>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getStatusBadgeClasses(todayRecord.status)}`}>
+                    {todayStatusMeta?.label}
+                  </span>
+                </div>
+                <div className="border-t border-slate-100 pt-2 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span>Check In:</span>
+                    <span className="font-mono font-semibold text-slate-700 flex items-center">
+                      {todayRecord.checkIn ?? '--:--'}
+                      {todayRecord.checkInAt && (
+                        <span className={`ml-1.5 text-[10px] font-bold ${
+                          getCheckInStatus(todayRecord.checkInAt, shiftCopy.startTime) === 'VALID'
+                            ? 'text-green-600'
+                            : 'text-amber-600'
+                        }`}>
+                          ({getCheckInStatus(todayRecord.checkInAt, shiftCopy.startTime) === 'VALID' ? 'Đúng giờ' : 'Muộn'})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Check Out:</span>
+                    <span className="font-mono font-semibold text-slate-700 flex items-center">
+                      {todayRecord.checkOut ?? '--:--'}
+                      {todayRecord.checkOutAt ? (
+                        <span className={`ml-1.5 text-[10px] font-bold ${
+                          getCheckOutStatus(todayRecord.checkOutAt, shiftCopy.endTime) === 'VALID'
+                            ? 'text-green-600'
+                            : 'text-amber-600'
+                        }`}>
+                          ({getCheckOutStatus(todayRecord.checkOutAt, shiftCopy.endTime) === 'VALID' ? 'Đủ giờ' : 'Về sớm'})
+                        </span>
+                      ) : todayRecord.checkInAt ? (
+                        <span className="ml-1.5 text-[10px] text-slate-400 font-normal">
+                          (Chưa check-out)
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 italic border-t border-slate-100 pt-2">{todayStatusMeta?.detail}</p>
               </div>
             ) : null}
           </div>
@@ -389,14 +607,14 @@ export default function CheckInOut({ user }: { user: User }) {
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-0 h-[500px]">
+          <div className="flex-1 overflow-auto p-0 h-[440px]">
             {viewMode === 'reports' ? (
               <div className="p-6">
                 {(isReportsLoading || isAttendanceLoading) && reports.length === 0 ? (
                   <p className="text-sm text-slate-500">Đang tải dữ liệu...</p>
                 ) : null}
                 <div className="space-y-4">
-                  {reports.map(report => (
+                  {paginatedReports.items.map(report => (
                     <div
                       key={report.id}
                       className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow"
@@ -442,7 +660,7 @@ export default function CheckInOut({ user }: { user: User }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {adjustmentRequests.map(request => (
+                  {paginatedRequests.items.map(request => (
                     <tr key={request.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 text-sm font-medium">{request.workDate}</td>
                       <td className="px-6 py-4 text-sm font-mono text-slate-600">
@@ -492,13 +710,45 @@ export default function CheckInOut({ user }: { user: User }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {records.map(record => {
+                  {paginatedRecords.items.map(record => {
                     const statusMeta = getAttendanceStatusMeta(record);
                     return (
                       <tr key={record.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4 text-sm font-medium">{record.date}</td>
-                        <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</td>
-                        <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkOut || '--:--'}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</span>
+                            {record.checkInAt && (
+                              <span className={`text-[10px] font-semibold mt-0.5 ${
+                                getCheckInStatus(record.checkInAt, shiftCopy.startTime) === 'VALID'
+                                  ? 'text-green-600'
+                                  : 'text-amber-600'
+                              }`}>
+                                {getCheckInStatus(record.checkInAt, shiftCopy.startTime) === 'VALID'
+                                  ? 'Đúng giờ'
+                                  : 'Đi muộn'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-mono text-slate-600">{record.checkOut || '--:--'}</span>
+                            {record.checkOutAt ? (
+                              <span className={`text-[10px] font-semibold mt-0.5 ${
+                                getCheckOutStatus(record.checkOutAt, shiftCopy.endTime) === 'VALID'
+                                  ? 'text-green-600'
+                                  : 'text-amber-600'
+                              }`}>
+                                {getCheckOutStatus(record.checkOutAt, shiftCopy.endTime) === 'VALID'
+                                  ? 'Hợp lệ'
+                                  : 'Về sớm'}
+                              </span>
+                            ) : record.checkInAt ? (
+                              <span className="text-[10px] text-slate-400 mt-0.5">Chưa check-out</span>
+                            ) : null}
+                          </div>
+                        </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center text-sm text-slate-600">
                             <MapPin className="w-4 h-4 mr-1 text-slate-400" />
@@ -543,6 +793,34 @@ export default function CheckInOut({ user }: { user: User }) {
                 </tbody>
               </table>
             )}
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="border-t border-slate-100 bg-white px-5 py-4 flex items-center justify-between text-xs text-slate-500">
+            <span>
+              Hiển thị {activePageData.rangeStart} đến {activePageData.rangeEnd} của {activePageData.totalItems} mục
+            </span>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => activePageData.setPage(activePageData.page - 1)}
+                disabled={activePageData.page === 1}
+                className="px-2.5 py-1.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-slate-600"
+              >
+                Trang trước
+              </button>
+              <span className="font-medium">
+                Trang {activePageData.page} / {activePageData.totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => activePageData.setPage(activePageData.page + 1)}
+                disabled={activePageData.page === activePageData.totalPages}
+                className="px-2.5 py-1.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-slate-600"
+              >
+                Trang sau
+              </button>
+            </div>
           </div>
         </div>
       </div>

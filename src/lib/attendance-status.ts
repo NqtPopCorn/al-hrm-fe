@@ -68,3 +68,40 @@ export function getAttendanceStatusMeta(
 
   return meta;
 }
+
+export function getCheckInStatus(
+  checkInAt?: string | null,
+  startTime: string = '08:00',
+): 'VALID' | 'LATE' | 'NONE' {
+  if (!checkInAt) return 'NONE';
+  const date = new Date(checkInAt);
+  if (Number.isNaN(date.getTime())) return 'NONE';
+
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const checkInMinutes = hours * 60 + minutes;
+
+  const [shiftHours, shiftMinutes] = startTime.split(':').map(Number);
+  const shiftStartMinutes = shiftHours * 60 + shiftMinutes;
+
+  return checkInMinutes <= shiftStartMinutes ? 'VALID' : 'LATE';
+}
+
+export function getCheckOutStatus(
+  checkOutAt?: string | null,
+  endTime: string = '17:00',
+): 'VALID' | 'EARLY' | 'NONE' {
+  if (!checkOutAt) return 'NONE';
+  const date = new Date(checkOutAt);
+  if (Number.isNaN(date.getTime())) return 'NONE';
+
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const checkOutMinutes = hours * 60 + minutes;
+
+  const [shiftHours, shiftMinutes] = endTime.split(':').map(Number);
+  const shiftEndMinutes = shiftHours * 60 + shiftMinutes;
+
+  return checkOutMinutes >= shiftEndMinutes ? 'VALID' : 'EARLY';
+}
+
