@@ -17,8 +17,10 @@ import Documents from './views/Documents';
 import Settings from './views/Settings';
 import { User } from './types';
 import { authService } from './services/auth.service';
+import { useToast } from './components/Toast';
 
 export default function App() {
+  const { showToast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
   const [isInitializingSession, setIsInitializingSession] = useState(true);
@@ -64,6 +66,10 @@ export default function App() {
   const handleLogin = (nextUser: User) => {
     setUser(nextUser);
     setCurrentTab(getDefaultTabForRole(nextUser.role));
+    showToast({
+      type: 'success',
+      message: `Chào mừng trở lại, ${nextUser.name}! 👋`,
+    });
   };
 
   const handleLogout = async () => {
@@ -74,6 +80,7 @@ export default function App() {
     } finally {
       setUser(null);
       setCurrentTab('dashboard');
+      showToast({ type: 'info', message: 'Đã đăng xuất thành công.' });
     }
   };
 

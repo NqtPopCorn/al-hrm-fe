@@ -171,6 +171,33 @@ export interface PayrollAttendanceSummary {
   workedDayEquivalent: number;
 }
 
+export interface PayrollSystemEarnings {
+  baseSalaryProrated: number;
+}
+
+export interface PayrollMandatoryInsuranceBreakdown {
+  insuranceBase: number;
+  socialInsurance: number;
+  healthInsurance: number;
+  unemploymentInsurance: number;
+  total: number;
+}
+
+export interface PayrollSystemDeductions {
+  mandatoryInsurance: PayrollMandatoryInsuranceBreakdown;
+  personalIncomeTax: number;
+}
+
+export interface PayrollManualAdjustments {
+  allowance: number;
+  bonus: number;
+  otherDeduction: number;
+  otherDeductionReason?: string | null;
+  note?: string | null;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface PayrollItem {
   id: string;
   periodId: string;
@@ -181,12 +208,17 @@ export interface PayrollItem {
   departmentId?: string | null;
   positionId?: string | null;
   baseSalarySnapshot: number;
+  systemEarnings: PayrollSystemEarnings;
+  systemDeductions: PayrollSystemDeductions;
+  manualAdjustments: PayrollManualAdjustments;
   bankSnapshot: PayrollBankSnapshot;
   attendanceSummary: PayrollAttendanceSummary;
   standardWorkingDays: number;
   grossSalary: number;
+  totalDeductions: number;
   netSalary: number;
   calculatedAt?: string | null;
+  warnings: string[];
 }
 
 export interface PayrollPeriod {

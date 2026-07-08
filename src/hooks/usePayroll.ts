@@ -38,7 +38,6 @@ export function usePayroll(options?: {
     queryKey: payrollQueryKeys.period(selectedPeriodId ?? 'none'),
     queryFn: () => payrollService.getPeriodById(selectedPeriodId ?? ''),
     enabled: loadPeriods && !!selectedPeriodId,
-    placeholderData: previousData => previousData,
   });
 
   const myPayrollQuery = useQuery({
@@ -92,6 +91,40 @@ export function usePayroll(options?: {
     onSuccess: invalidatePayroll,
   });
 
+  const revertToDraftMutation = useMutation({
+    mutationFn: (payrollId: string) => payrollService.revertToDraft(payrollId),
+    onSuccess: invalidatePayroll,
+  });
+
+  const revertToCalculatedMutation = useMutation({
+    mutationFn: (payrollId: string) => payrollService.revertToCalculated(payrollId),
+    onSuccess: invalidatePayroll,
+  });
+
+  const revertToHrReviewedMutation = useMutation({
+    mutationFn: (payrollId: string) => payrollService.revertToHrReviewed(payrollId),
+    onSuccess: invalidatePayroll,
+  });
+
+  const updateItemManualAdjustmentsMutation = useMutation({
+    mutationFn: (input: {
+      payrollItemId: string;
+      allowance: number;
+      bonus: number;
+      otherDeduction: number;
+      otherDeductionReason?: string | null;
+      note?: string;
+    }) =>
+      payrollService.updateItemManualAdjustments(input.payrollItemId, {
+        allowance: input.allowance,
+        bonus: input.bonus,
+        otherDeduction: input.otherDeduction,
+        otherDeductionReason: input.otherDeductionReason,
+        note: input.note,
+      }),
+    onSuccess: invalidatePayroll,
+  });
+
   return {
     periods: periodsQuery.data ?? [],
     selectedPeriod: periodDetailQuery.data ?? null,
@@ -126,10 +159,28 @@ export function usePayroll(options?: {
       approvePeriodMutation.mutateAsync(payrollId),
     markPeriodPaid: (payrollId: string) =>
       markPaidMutation.mutateAsync(payrollId),
+    revertToDraft: (payrollId: string) =>
+      revertToDraftMutation.mutateAsync(payrollId),
+    revertToCalculated: (payrollId: string) =>
+      revertToCalculatedMutation.mutateAsync(payrollId),
+    revertToHrReviewed: (payrollId: string) =>
+      revertToHrReviewedMutation.mutateAsync(payrollId),
+    updateItemManualAdjustments: (payload: {
+      payrollItemId: string;
+      allowance: number;
+      bonus: number;
+      otherDeduction: number;
+      otherDeductionReason?: string | null;
+      note?: string;
+    }) => updateItemManualAdjustmentsMutation.mutateAsync(payload),
     isCreatingPeriod: createPeriodMutation.isPending,
     isCalculatingPeriod: calculatePeriodMutation.isPending,
     isReviewingPeriod: reviewPeriodMutation.isPending,
     isApprovingPeriod: approvePeriodMutation.isPending,
     isMarkingPaid: markPaidMutation.isPending,
+    isRevertingToDraft: revertToDraftMutation.isPending,
+    isRevertingToCalculated: revertToCalculatedMutation.isPending,
+    isRevertingToHrReviewed: revertToHrReviewedMutation.isPending,
+    isUpdatingManualAdjustments: updateItemManualAdjustmentsMutation.isPending,
   };
 }

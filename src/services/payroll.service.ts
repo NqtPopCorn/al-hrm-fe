@@ -39,4 +39,32 @@ export const payrollService = {
   markPeriodPaid(payrollId: string) {
     return api.post<PayrollPeriodDetail>(`/payroll/${payrollId}/mark-paid`);
   },
+
+  revertToDraft(payrollId: string) {
+    return api.post<PayrollPeriodDetail>(`/payroll/${payrollId}/revert-to-draft`);
+  },
+
+  revertToCalculated(payrollId: string) {
+    return api.post<PayrollPeriodDetail>(`/payroll/${payrollId}/revert-to-calculated`);
+  },
+
+  revertToHrReviewed(payrollId: string) {
+    return api.post<PayrollPeriodDetail>(`/payroll/${payrollId}/revert-to-hr-reviewed`);
+  },
+
+  updateItemManualAdjustments(
+    payrollItemId: string,
+    payload: {
+      allowance: number;
+      bonus: number;
+      otherDeduction: number;
+      otherDeductionReason?: string | null;
+      note?: string;
+    },
+  ) {
+    return api.patch<PayrollItem>(
+      `/payroll/items/${payrollItemId}/manual-adjustments`,
+      payload,
+    );
+  },
 };
