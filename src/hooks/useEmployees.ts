@@ -12,6 +12,7 @@ import {
   EmployeeListParams,
   EmployeeSensitiveUpsertPayload,
   EmployeeUpsertPayload,
+  ExportDefaultSdlcAccountsResult,
   PaginatedResponse,
 } from '../services/employee.service';
 import { Employee, EmployeeSensitiveInfo } from '../types';
@@ -181,6 +182,11 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     },
   });
 
+  const exportDefaultSdlcAccountsMutation = useMutation({
+    mutationFn: (employeeIds: string[]) =>
+      employeeService.exportDefaultSdlcAccounts(employeeIds),
+  });
+
   const setSensitiveInfo = (
     employeeId: string,
     sensitiveInfo: EmployeeSensitiveInfo | null,
@@ -225,11 +231,17 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     ) => updateSensitiveInfoMutation.mutateAsync({ employeeId, payload }),
     importEmployees: (file: File): Promise<EmployeeImportResponse> =>
       importEmployeesMutation.mutateAsync(file),
+    exportDefaultSdlcAccounts: (
+      employeeIds: string[],
+    ): Promise<ExportDefaultSdlcAccountsResult> =>
+      exportDefaultSdlcAccountsMutation.mutateAsync(employeeIds),
     setSensitiveInfo,
     isCreating: createEmployeeMutation.isPending,
     isUpdating: updateEmployeeMutation.isPending,
     isDisabling: disableEmployeeMutation.isPending,
     isUpdatingSensitive: updateSensitiveInfoMutation.isPending,
     isImporting: importEmployeesMutation.isPending,
+    isExportingDefaultSdlcAccounts:
+      exportDefaultSdlcAccountsMutation.isPending,
   };
 }

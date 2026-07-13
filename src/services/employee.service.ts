@@ -1,4 +1,4 @@
-import { api } from '../lib/api';
+import { api, apiDownload } from '../lib/api';
 import {
   Department,
   Employee,
@@ -44,6 +44,12 @@ export interface EmployeeSensitiveUpsertPayload {
   bankId?: string;
   bankAccountNumber?: string;
   bankAccountName?: string;
+  birthday?: string;
+}
+
+export interface ExportDefaultSdlcAccountsResult {
+  blob: Blob;
+  filename: string;
 }
 
 export interface EmployeeImportRowError {
@@ -86,6 +92,10 @@ interface ApiEmployee {
   joinDate: string;
   isActive?: boolean;
   disabledAt?: string | null;
+  exportReadiness?: {
+    canExportDefaultSdlcAccount: boolean;
+    reasons: string[];
+  };
 }
 
 interface ApiEmployeeSensitiveInfo {
@@ -94,6 +104,7 @@ interface ApiEmployeeSensitiveInfo {
   bankId?: string;
   bankAccountNumber?: string;
   bankAccountName?: string;
+  birthday?: string;
 }
 
 interface ApiDepartment {
@@ -160,6 +171,13 @@ function normalizeEmployee(employee: ApiEmployee): Employee {
     joinDate: employee.joinDate,
     isActive: employee.isActive,
     disabledAt: employee.disabledAt,
+    exportReadiness: employee.exportReadiness
+      ? {
+          canExportDefaultSdlcAccount:
+            employee.exportReadiness.canExportDefaultSdlcAccount,
+          reasons: employee.exportReadiness.reasons ?? [],
+        }
+      : undefined,
   };
 }
 
@@ -176,6 +194,7 @@ function normalizeSensitiveInfo(
     bankId: sensitiveInfo.bankId,
     bankAccountNumber: sensitiveInfo.bankAccountNumber,
     bankAccountName: sensitiveInfo.bankAccountName,
+    birthday: sensitiveInfo.birthday,
   };
 }
 
@@ -309,6 +328,22 @@ export const employeeService = {
     formData.append('file', file);
 
     return api.post<EmployeeImportResponse>('/employees/import', formData);
+  },
+
+  async exportDefaultSdlcAccounts(
+    employeeIds: string[],
+  ): Promise<ExportDefaultSdlcAccountsResult> {
+    const { blob, headers } = await apiDownload(
+      'POST',
+      '/employees/export/sdlc-default-accounts',
+      { body: { employeeIds } },
+    );
+    const disposition = headers['content-disposition'] as string | undefined;
+    const filename =
+      disposition?.match(/filename="?([^";]+)"?/)?.[1] ??
+      'sdlc-default-accounts.csv';
+
+    return { blob, filename };
   },
 
   async listDepartments() {

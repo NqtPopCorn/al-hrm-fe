@@ -72,12 +72,18 @@ export interface Position {
   baseSalary: number;
 }
 
+export interface EmployeeExportReadiness {
+  canExportDefaultSdlcAccount: boolean;
+  reasons: string[];
+}
+
 export interface EmployeeSensitiveInfo {
   employeeId: string;
   baseSalary?: number;
   bankId?: string;
   bankAccountNumber?: string;
   bankAccountName?: string;
+  birthday?: string;
 }
 
 export interface Employee {
@@ -97,6 +103,7 @@ export interface Employee {
   isActive?: boolean;
   disabledAt?: string | null;
   sensitiveInfo?: EmployeeSensitiveInfo;
+  exportReadiness?: EmployeeExportReadiness;
 }
 
 export interface AttendanceRecord {
