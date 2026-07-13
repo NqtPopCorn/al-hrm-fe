@@ -11,6 +11,7 @@ import Accounts from './views/Accounts';
 import Employees from './views/Employees';
 import Departments from './views/Departments';
 import CheckInOut from './views/CheckInOut';
+import DailyReports from './views/DailyReports';
 import Attendance from './views/Attendance';
 import Payroll from './views/Payroll';
 import Recruitment from './views/Recruitment';
@@ -114,6 +115,8 @@ export default function App() {
         return <Departments userRole={user.role} />;
       case 'checkin':
         return <CheckInOut user={user} />;
+      case 'daily_reports':
+        return <DailyReports user={user} />;
       case 'attendance':
         return <Attendance user={user} />;
       case 'payroll':
@@ -141,6 +144,8 @@ export default function App() {
         return 'Phòng ban';
       case 'checkin':
         return 'Điểm danh';
+      case 'daily_reports':
+        return 'Quản lý báo cáo cuối ngày';
       case 'attendance':
         return 'Quản lý chấm công';
       case 'payroll':

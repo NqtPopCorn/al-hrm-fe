@@ -4,7 +4,6 @@ import { useToast } from '../components/Toast';
 
 import Modal from '../components/Modal';
 import { useAttendance } from '../hooks/useAttendance';
-import { useDailyReports } from '../hooks/useDailyReports';
 import { useDepartments } from '../hooks/useDepartments';
 import { useEmployees } from '../hooks/useEmployees';
 import {
@@ -15,14 +14,12 @@ import {
 import {
   filterAndPaginateAdjustmentRequests,
   filterAndPaginateAttendanceRecords,
-  filterAndPaginateReports,
   getEmployeeOptions,
   getEmployeeSummary,
 } from './attendance-view-model';
 import {
   AttendanceAdjustmentRequest,
   AttendanceRecord,
-  DailyReport,
   User,
   WorkMode,
 } from '../types';
@@ -73,13 +70,12 @@ export default function Attendance({ user }: { user: User }) {
   const { showToast } = useToast();
   const currentMonth = getCurrentMonth();
   const isSuperAdmin = user.role === 'Super Admin';
-  const [viewMode, setViewMode] = useState<'company' | 'requests' | 'reports'>('company');
+  const [viewMode, setViewMode] = useState<'company' | 'requests'>('company');
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
   const [selectedRequest, setSelectedRequest] =
     useState<AttendanceAdjustmentRequest | null>(null);
-  const [viewingReport, setViewingReport] = useState<DailyReport | null>(null);
   const [adjustReason, setAdjustReason] = useState('');
   const [adjustCheckIn, setAdjustCheckIn] = useState('');
   const [adjustCheckOut, setAdjustCheckOut] = useState('');
@@ -138,27 +134,16 @@ export default function Attendance({ user }: { user: User }) {
         ? { employeeId: selectedEmployeeId }
         : undefined,
   });
-  const {
-    reports,
-    isLoading: isReportsLoading,
-    error: reportsError,
-  } = useDailyReports({
-    scope: 'all',
-    enabled: isSuperAdmin,
-  });
-
   const pageError =
     employeesError ||
     departmentsError ||
     attendanceError ||
-    adjustmentRequestsError ||
-    reportsError;
+    adjustmentRequestsError;
   const isLoading =
     isEmployeesLoading ||
     isDepartmentsLoading ||
     isAttendanceLoading ||
-    isAdjustmentRequestsLoading ||
-    isReportsLoading;
+    isAdjustmentRequestsLoading;
   const sharedFilters = {
     month: selectedMonth,
     departmentId: selectedDepartmentId,
@@ -180,20 +165,10 @@ export default function Attendance({ user }: { user: User }) {
     page,
     pageSize,
   });
-  const paginatedReports = filterAndPaginateReports({
-    reports,
-    employees,
-    departments,
-    filters: sharedFilters,
-    page,
-    pageSize,
-  });
   const activePagination =
     viewMode === 'company'
       ? paginatedRecords
-      : viewMode === 'requests'
-        ? paginatedRequests
-        : paginatedReports;
+      : paginatedRequests;
 
   useEffect(() => {
     setPage(1);
@@ -341,17 +316,6 @@ export default function Attendance({ user }: { user: User }) {
               >
                 Yêu cầu ngoại lệ
               </button>
-              <button
-                onClick={() => setViewMode('reports')}
-                className={`px-3 py-1.5 text-xs font-medium rounded flex mục-center ${
-                  viewMode === 'reports'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5 mr-1" />
-                Báo cáo nhân viên
-              </button>
             </div>
           </div>
 
@@ -408,70 +372,13 @@ export default function Attendance({ user }: { user: User }) {
               <p>
                 {viewMode === 'company'
                   ? 'Danh sách chấm công'
-                  : viewMode === 'requests'
-                    ? 'Yêu cầu ngoại lệ'
-                    : 'Báo cáo nhân viên'}
+                  : 'Yêu cầu ngoại lệ'}
               </p>
             </div>
           </div>
 
           <div className="flex-1 overflow-auto p-0">
-            {viewMode === 'reports' ? (
-              <div className="p-6">
-                {isLoading && reports.length === 0 ? (
-                  <p className="text-sm text-slate-500">Đang tải dữ liệu...</p>
-                ) : null}
-                <div className="space-y-4">
-                  {paginatedReports.items.map(report => {
-                    const employeeSummary = getEmployeeSummary(
-                      report.employeeId,
-                      employees,
-                      departments,
-                      report.employeeSnapshot,
-                    );
-
-                    return (
-                      <div
-                        key={report.id}
-                        className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex justify-between mục-start mb-3">
-                          <div>
-                            <h4 className="font-semibold text-slate-800">
-                              {employeeSummary.title}
-                            </h4>
-                            <p className="mt-1 text-xs font-medium text-slate-500">
-                              {employeeSummary.subtitle}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              Báo cáo ngày {report.date} - Lần sửa cuối:{' '}
-                              {new Date(report.updatedAt).toLocaleString()}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => setViewingReport(report)}
-                            className="text-blue-600 hover:text-blue-800 transition-colors inline-flex mục-center text-xs font-medium bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded"
-                          >
-                            <Eye className="w-4 h-4 mr-1" />
-                            Xem chi tiết
-                          </button>
-                        </div>
-                        <div
-                          className="prose prose-sm prose-slate max-w-none text-slate-600 line-clamp-3 bg-slate-50 p-3 rounded border border-slate-100"
-                          dangerouslySetInnerHTML={{ __html: report.content }}
-                        />
-                      </div>
-                    );
-                  })}
-                  {!isLoading && paginatedReports.totalItems === 0 ? (
-                    <div className="text-center py-12 text-slate-500">
-                      <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                      <p>Chưa có báo cáo nào</p>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : viewMode === 'requests' ? (
+            {viewMode === 'requests' ? (
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
                   <tr>
@@ -861,38 +768,7 @@ export default function Attendance({ user }: { user: User }) {
         ) : null}
       </Modal>
 
-      <Modal
-        isOpen={!!viewingReport}
-        onClose={() => setViewingReport(null)}
-        title="Chi tiết bao cao"
-        maxWidth="max-w-4xl"
-      >
-        {viewingReport ? (
-          <div className="space-y-4">
-            <div className="flex justify-between mục-center text-sm text-slate-500 mb-2">
-              <span>
-                Bởi:{' '}
-                <span className="font-medium text-slate-800">
-                  {
-                    getEmployeeSummary(
-                      viewingReport.employeeId,
-                      employees,
-                      departments,
-                      viewingReport.employeeSnapshot,
-                    ).title
-                  }
-                </span>
-              </span>
-              <span>Ngày: {viewingReport.date}</span>
-            </div>
 
-            <div
-              className="prose prose-sm prose-slate max-w-none text-slate-700 bg-slate-50 p-4 rounded-lg border border-slate-100"
-              dangerouslySetInnerHTML={{ __html: viewingReport.content }}
-            />
-          </div>
-        ) : null}
-      </Modal>
     </div>
   );
 }

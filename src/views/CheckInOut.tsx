@@ -92,7 +92,7 @@ export default function CheckInOut({ user }: { user: User }) {
   const [clock, setClock] = useState(() =>
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   );
-  const [viewMode, setViewMode] = useState<'personal' | 'requests' | 'reports'>('personal');
+  const [viewMode, setViewMode] = useState<'personal' | 'requests'>('personal');
   const [workMode, setWorkMode] = useState<WorkMode>('OFFICE');
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -169,13 +169,11 @@ export default function CheckInOut({ user }: { user: User }) {
 
   const [recordsPage, setRecordsPage] = useState(1);
   const [requestsPage, setRequestsPage] = useState(1);
-  const [reportsPage, setReportsPage] = useState(1);
   const pageSize = 5;
 
   useEffect(() => {
     setRecordsPage(1);
     setRequestsPage(1);
-    setReportsPage(1);
   }, [viewMode, month]);
 
   const sortedRecords = [...records].sort((a, b) => b.date.localeCompare(a.date));
@@ -184,7 +182,6 @@ export default function CheckInOut({ user }: { user: User }) {
     const rightTime = b.createdAt ?? b.workDate;
     return rightTime.localeCompare(leftTime);
   });
-  const sortedReports = [...reports].sort((a, b) => b.date.localeCompare(a.date));
 
   const paginate = <T,>(items: T[], page: number, size: number) => {
     const totalItems = items.length;
@@ -205,27 +202,17 @@ export default function CheckInOut({ user }: { user: User }) {
 
   const paginatedRecords = paginate(sortedRecords, recordsPage, pageSize);
   const paginatedRequests = paginate(sortedRequests, requestsPage, pageSize);
-  const paginatedReports = paginate(sortedReports, reportsPage, pageSize);
 
   const activePageData =
-    viewMode === 'reports'
+    viewMode === 'requests'
       ? {
-          page: reportsPage,
-          totalPages: paginatedReports.totalPages,
-          totalItems: paginatedReports.totalItems,
-          rangeStart: paginatedReports.rangeStart,
-          rangeEnd: paginatedReports.rangeEnd,
-          setPage: setReportsPage,
+          page: requestsPage,
+          totalPages: paginatedRequests.totalPages,
+          totalItems: paginatedRequests.totalItems,
+          rangeStart: paginatedRequests.rangeStart,
+          rangeEnd: paginatedRequests.rangeEnd,
+          setPage: setRequestsPage,
         }
-      : viewMode === 'requests'
-        ? {
-            page: requestsPage,
-            totalPages: paginatedRequests.totalPages,
-            totalItems: paginatedRequests.totalItems,
-            rangeStart: paginatedRequests.rangeStart,
-            rangeEnd: paginatedRequests.rangeEnd,
-            setPage: setRequestsPage,
-          }
         : {
             page: recordsPage,
             totalPages: paginatedRecords.totalPages,
@@ -595,60 +582,10 @@ export default function CheckInOut({ user }: { user: User }) {
               >
                 Yêu cầu điều chỉnh
               </button>
-              <button
-                onClick={() => setViewMode('reports')}
-                className={`px-3 py-1.5 text-xs font-medium rounded flex items-center ${viewMode === 'reports'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-                  }`}
-              >
-                <FileText className="w-3.5 h-3.5 mr-1" />
-                Báo cáo của tôi
-              </button>
             </div>
           </div>
           <div className="flex-1 overflow-auto p-0 h-[440px]">
-            {viewMode === 'reports' ? (
-              <div className="p-6">
-                {(isReportsLoading || isAttendanceLoading) && reports.length === 0 ? (
-                  <p className="text-sm text-slate-500">Đang tải dữ liệu...</p>
-                ) : null}
-                <div className="space-y-4">
-                  {paginatedReports.items.map(report => (
-                    <div
-                      key={report.id}
-                      className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="text-xs text-slate-500">
-                            Báo cáo ngày {report.date} - Lần sửa cuối:{' '}
-                            {new Date(report.updatedAt).toLocaleString()}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setViewingReport(report)}
-                          className="text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center text-xs font-medium bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded"
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          Xem chi tiết
-                        </button>
-                      </div>
-                      <div
-                        className="prose prose-sm prose-slate max-w-none text-slate-600 line-clamp-3 bg-slate-50 p-3 rounded border border-slate-100"
-                        dangerouslySetInnerHTML={{ __html: report.content }}
-                      />
-                    </div>
-                  ))}
-                  {!isReportsLoading && reports.length === 0 ? (
-                    <div className="text-center py-12 text-slate-500">
-                      <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                      <p>Bạn chưa có báo cáo nào</p>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : viewMode === 'requests' ? (
+            {viewMode === 'requests' ? (
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
                   <tr>

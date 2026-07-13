@@ -20,6 +20,7 @@ export type AppTab =
   | 'departments'
   | 'checkin'
   | 'attendance'
+  | 'daily_reports'
   | 'payroll'
   | 'recruitment'
   | 'documents'
@@ -78,6 +79,12 @@ const navItems: NavItem[] = [
     roles: ['Super Admin', 'HR Admin', 'Manager'],
   },
   {
+    id: 'daily_reports',
+    label: 'Quản lý báo cáo cuối ngày',
+    icon: FileText,
+    roles: ['Super Admin', 'HR Admin', 'Manager'],
+  },
+  {
     id: 'payroll',
     label: 'Lương',
     icon: DollarSign,
@@ -95,7 +102,6 @@ const navItems: NavItem[] = [
     label: 'Tài liệu',
     icon: FileText,
     roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
-    hiddenFromMainNav: true,
   },
   {
     id: 'settings',
