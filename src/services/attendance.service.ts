@@ -15,13 +15,16 @@ interface ApiAttendanceRecord {
   checkInAt?: string | null;
   checkOutAt?: string | null;
   workLocationMode: WorkMode;
-  workLocationMetadata?: {
-    publicIp?: string;
-    wifiSsid?: string;
-    gps?: { lat: number; lng: number };
-  };
+  workLocationId?: string | null;
+  workLocationMetadata?: Record<string, unknown>;
   status: AttendanceStatus;
   statusReasonCode?: string | null;
+  dayUnit?: number;
+  lateMinutes?: number;
+  earlyLeaveMinutes?: number;
+  workingMinutes?: number;
+  standardWorkMinutes?: number;
+  warningMessage?: string;
   dailyReportId?: string | null;
   manualAdjustmentReason?: string | null;
 }
@@ -132,6 +135,8 @@ function formatTime(value?: string | null) {
 }
 
 function normalizeAttendance(record: ApiAttendanceRecord): AttendanceRecord {
+  const metadata = record.workLocationMetadata as Record<string, unknown> | undefined;
+  const isOutRange = metadata?.isOutRange === true;
   return {
     id: record.id,
     employeeId: record.employeeId,
@@ -142,18 +147,20 @@ function normalizeAttendance(record: ApiAttendanceRecord): AttendanceRecord {
     checkInAt: record.checkInAt ?? null,
     checkOutAt: record.checkOutAt ?? null,
     type: record.workLocationMode,
-    ip: record.workLocationMetadata?.publicIp,
-    location:
-      record.workLocationMetadata?.wifiSsid ??
-      (record.workLocationMetadata?.gps
-        ? `${record.workLocationMetadata.gps.lat}, ${record.workLocationMetadata.gps.lng}`
-        : undefined),
     status: record.status,
     statusReasonCode: record.statusReasonCode ?? null,
-    workdayCoefficient:
+    workdayCoefficient: record.dayUnit ?? (
       record.status === 'INVALID' || record.status === 'MISSING_CHECKOUT'
         ? 0
-        : 1,
+        : 1
+    ),
+    dayUnit: record.dayUnit,
+    lateMinutes: record.lateMinutes,
+    earlyLeaveMinutes: record.earlyLeaveMinutes,
+    workingMinutes: record.workingMinutes,
+    standardWorkMinutes: record.standardWorkMinutes,
+    warningMessage: record.warningMessage,
+    isOutRange,
     dailyReportId: record.dailyReportId ?? null,
     manualAdjustmentReason: record.manualAdjustmentReason ?? null,
   };
