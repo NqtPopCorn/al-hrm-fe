@@ -232,7 +232,7 @@ export default function AdminAttendanceDashboard({ user }: { user: User }) {
           icon={<Calendar className="h-5 w-5" />}
           label="Tổng ngày công tích lũy"
           value={stats.totalDayUnits}
-          sub="Sum of dayUnit"
+          sub="Tổng hệ số công từ Backend"
           accent="violet"
         />
         <StatCard
@@ -371,7 +371,11 @@ export default function AdminAttendanceDashboard({ user }: { user: User }) {
                         )}
                       </td>
                       <td className="px-5 py-4">
-                        <span className="font-mono text-sm font-semibold text-slate-800">
+                        <span className={`font-mono text-sm font-semibold ${
+                          record.dayUnit != null && record.dayUnit < 1
+                            ? 'text-amber-700'
+                            : 'text-slate-800'
+                        }`}>
                           {record.dayUnit != null
                             ? record.dayUnit.toFixed(2)
                             : record.workdayCoefficient.toFixed(2)}
