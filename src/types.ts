@@ -307,3 +307,45 @@ export interface DailyReport {
   updatedAt: string;
   submittedAt?: string;
 }
+
+export interface ProjectMember {
+  employee_id: string;
+  full_name: string;
+  avatar_url?: string;
+}
+
+export interface ProjectAttachment {
+  file_name: string;
+  file_url: string;
+  file_type: string;
+}
+
+export interface AuditUser {
+  user_id: string;
+  full_name: string;
+}
+
+export interface ProjectSnapshot {
+  content_snapshot: string;
+  modified_by: AuditUser;
+  modified_at: string;
+  change_note?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  content: string;
+  category?: string;
+  technologies: string[];
+  tags: string[];
+  scale?: string;
+  year?: number;
+  members: ProjectMember[];
+  attachments: ProjectAttachment[];
+  created_by: AuditUser;
+  updated_by?: AuditUser;
+  history: ProjectSnapshot[];
+  createdAt?: string;
+  updatedAt?: string;
+}
