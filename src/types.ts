@@ -115,12 +115,19 @@ export interface AttendanceRecord {
   checkOut: string | null;
   checkInAt?: string | null;
   checkOutAt?: string | null;
-  type: WorkMode;
+  type: WorkMode | null;
   ip?: string;
   location?: string;
   status: AttendanceStatus;
   statusReasonCode?: string | null;
   workdayCoefficient: number;
+  dayUnit?: number;
+  lateMinutes?: number;
+  earlyLeaveMinutes?: number;
+  workingMinutes?: number;
+  standardWorkMinutes?: number;
+  warningMessage?: string;
+  isOutRange?: boolean;
   dailyReportId?: string | null;
   manualAdjustmentReason?: string | null;
 }
