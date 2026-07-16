@@ -1,10 +1,5 @@
 import { useEffect, useState } from 'react';
-import Sidebar, {
-  AppTab,
-  getDefaultTabForRole,
-  isTabAvailableForRole,
-} from './components/Sidebar';
-import Header from './components/Header';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './views/Login';
 import DashboardHome from './views/DashboardHome';
 import Accounts from './views/Accounts';
@@ -22,11 +17,12 @@ import HandoverWrapper from './views/HandoverWrapper';
 import { User } from './types';
 import { authService } from './services/auth.service';
 import { useToast } from './components/Toast';
+import AdminLayout from './components/AdminLayout';
+import { getDefaultTabForRole } from './components/Sidebar';
 
 export default function App() {
   const { showToast } = useToast();
   const [user, setUser] = useState<User | null>(null);
-  const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
   const [isInitializingSession, setIsInitializingSession] = useState(true);
 
   useEffect(() => {
@@ -34,7 +30,6 @@ export default function App() {
       try {
         const currentUser = await authService.me();
         setUser(currentUser);
-        setCurrentTab(getDefaultTabForRole(currentUser.role));
       } catch (error) {
         if (!authService.isAuthError(error)) {
           setIsInitializingSession(false);
@@ -45,7 +40,6 @@ export default function App() {
           await authService.refresh();
           const refreshedUser = await authService.me();
           setUser(refreshedUser);
-          setCurrentTab(getDefaultTabForRole(refreshedUser.role));
         } catch {
           setUser(null);
         }
@@ -57,19 +51,8 @@ export default function App() {
     bootstrapSession();
   }, []);
 
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-
-    if (!isTabAvailableForRole(currentTab, user.role)) {
-      setCurrentTab(getDefaultTabForRole(user.role));
-    }
-  }, [currentTab, user]);
-
   const handleLogin = (nextUser: User) => {
     setUser(nextUser);
-    setCurrentTab(getDefaultTabForRole(nextUser.role));
     showToast({
       type: 'success',
       message: `Chào mừng trở lại, ${nextUser.name}! 👋`,
@@ -83,7 +66,6 @@ export default function App() {
       // Reset local state even when the server session is already gone.
     } finally {
       setUser(null);
-      setCurrentTab('dashboard');
       showToast({ type: 'info', message: 'Đã đăng xuất thành công.' });
     }
   };
@@ -101,90 +83,40 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  const renderContent = () => {
-    switch (currentTab) {
-      case 'dashboard':
-        return <DashboardHome user={user} />;
-      case 'accounts':
-        return <Accounts user={user} />;
-      case 'employees':
-        return <Employees userRole={user.role} />;
-      case 'departments':
-        return <Departments userRole={user.role} />;
-      case 'checkin':
-        return <CheckInOut user={user} />;
-      case 'daily_reports':
-        return <DailyReports user={user} />;
-      case 'attendance':
-        return <Attendance user={user} />;
-      case 'payroll':
-        return <Payroll userRole={user.role} />;
-      case 'recruitment':
-        return <Recruitment />;
-      case 'documents':
-        return <Documents userRole={user.role} />;
-      case 'projects':
-        return <ProjectWrapper />;
-      case 'handover_record':
-        return <HandoverWrapper user={user} />;
-      case 'settings':
-        return <Settings />;
-      default:
-        return <DashboardHome user={user} />;
-    }
-  };
-
-  const getPageTitle = () => {
-    switch (currentTab) {
-      case 'dashboard':
-        return 'Tổng quan';
-      case 'accounts':
-        return 'Tài khoản';
-      case 'employees':
-        return 'Nhân viên';
-      case 'departments':
-        return 'Phòng ban';
-      case 'checkin':
-        return 'Điểm danh';
-      case 'daily_reports':
-        return 'Quản lý báo cáo cuối ngày';
-      case 'attendance':
-        return 'Quản lý chấm công';
-      case 'payroll':
-        return 'Lương';
-      case 'recruitment':
-        return 'Tuyển dụng';
-      case 'documents':
-        return 'Tài liệu';
-      case 'projects':
-        return 'Dự án';
-      case 'handover_record':
-        return 'Bàn giao công việc';
-      case 'settings':
-        return 'Cài đặt';
-      default:
-        return 'Tổng quan';
-    }
-  };
-
   return (
-    <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
-      <Sidebar
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
-        role={user.role}
-        onLogout={handleLogout}
-      />
-      <div className="flex-1 flex flex-col ml-64 min-w-0">
-        <Header user={user} title={getPageTitle()} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-8">
-          <div className="max-w-7xl mx-auto">{renderContent()}</div>
-        </main>
-      </div>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        {!user ? (
+          <>
+            <Route path="/login" element={<Login onLogin={handleLogin} />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </>
+        ) : (
+          <>
+            <Route path="/login" element={<Navigate to={`/${getDefaultTabForRole(user.role)}`} replace />} />
+            <Route path="/" element={<Navigate to={`/${getDefaultTabForRole(user.role)}`} replace />} />
+            
+            <Route path="/" element={<AdminLayout user={user} onLogout={handleLogout} />}>
+              <Route path="dashboard" element={<DashboardHome user={user} />} />
+              <Route path="accounts" element={<Accounts user={user} />} />
+              <Route path="employees" element={<Employees userRole={user.role} />} />
+              <Route path="departments" element={<Departments userRole={user.role} />} />
+              <Route path="checkin" element={<CheckInOut user={user} />} />
+              <Route path="daily_reports" element={<DailyReports user={user} />} />
+              <Route path="attendance" element={<Attendance user={user} />} />
+              <Route path="payroll" element={<Payroll userRole={user.role} />} />
+              <Route path="recruitment" element={<Recruitment />} />
+              <Route path="documents" element={<Documents userRole={user.role} />} />
+              <Route path="projects" element={<ProjectWrapper />} />
+              <Route path="handover_record" element={<HandoverWrapper user={user} />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to={`/${getDefaultTabForRole(user.role)}`} replace />} />
+            </Route>
+            
+            <Route path="*" element={<Navigate to={`/${getDefaultTabForRole(user.role)}`} replace />} />
+          </>
+        )}
+      </Routes>
+    </BrowserRouter>
   );
 }

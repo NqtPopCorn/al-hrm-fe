@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {
   Users,
   LayoutDashboard,
@@ -39,7 +40,6 @@ type NavItem = {
 
 interface SidebarProps {
   currentTab: AppTab;
-  setCurrentTab: (tab: AppTab) => void;
   role: Role;
   onLogout: () => Promise<void> | void;
 }
@@ -142,7 +142,6 @@ export function getDefaultTabForRole(role: Role): AppTab {
 
 export default function Sidebar({
   currentTab,
-  setCurrentTab,
   role,
   onLogout,
 }: SidebarProps) {
@@ -167,9 +166,9 @@ export default function Sidebar({
           const Icon = item.icon;
           const isActive = currentTab === item.id;
           return (
-            <button
+            <Link
               key={item.id}
-              onClick={() => setCurrentTab(item.id)}
+              to={`/${item.id}`}
               className={cn(
                 'w-full flex items-center px-6 py-2.5 transition-colors text-sm',
                 isActive
@@ -184,7 +183,7 @@ export default function Sidebar({
                 )}
               />
               {item.label}
-            </button>
+            </Link>
           );
         })}
       </nav>
