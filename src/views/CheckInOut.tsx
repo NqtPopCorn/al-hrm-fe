@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle, Clock, Edit3, Eye, FileText, MapPin } from 'lucide-react';
 import JoditEditor from 'jodit-react';
+import DOMPurify from 'dompurify';
 import { useToast } from '../components/Toast';
 
 import Modal from '../components/Modal';
@@ -918,7 +919,7 @@ export default function CheckInOut({ user }: { user: User }) {
 
             <div
               className="prose prose-sm prose-slate max-w-none text-slate-700 bg-slate-50 p-4 rounded-lg border border-slate-100"
-              dangerouslySetInnerHTML={{ __html: viewingReport.content }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewingReport.content) }}
             />
 
             <div className="pt-4 flex justify-end space-x-3">

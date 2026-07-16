@@ -10,6 +10,7 @@ import {
   getEmployeeSummary,
 } from './attendance-view-model';
 import { DailyReport, User } from '../types';
+import DOMPurify from 'dompurify';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -213,7 +214,7 @@ export default function DailyReports({ user }: { user: User }) {
                   </div>
                   <div
                     className="prose prose-sm prose-slate max-w-none text-slate-600 line-clamp-3 bg-slate-50 p-3 rounded border border-slate-100"
-                    dangerouslySetInnerHTML={{ __html: report.content }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(report.content) }}
                   />
                 </div>
               );
@@ -294,7 +295,7 @@ export default function DailyReports({ user }: { user: User }) {
 
             <div
               className="prose prose-sm prose-slate max-w-none text-slate-700 bg-slate-50 p-4 rounded-lg border border-slate-100"
-              dangerouslySetInnerHTML={{ __html: viewingReport.content }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewingReport.content) }}
             />
 
             <div className="pt-4 flex justify-end space-x-3">
