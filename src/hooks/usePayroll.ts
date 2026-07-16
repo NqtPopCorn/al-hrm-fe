@@ -129,9 +129,9 @@ export function usePayroll(options?: {
     periods: periodsQuery.data ?? [],
     selectedPeriod: periodDetailQuery.data ?? null,
     myPayrollItems: myPayrollQuery.data ?? [],
-    isPeriodsLoading: periodsQuery.isPending,
-    isPeriodLoading: periodDetailQuery.isPending,
-    isMyPayrollLoading: myPayrollQuery.isPending,
+    isPeriodsLoading: loadPeriods && periodsQuery.isPending,
+    isPeriodLoading: !!selectedPeriodId && periodDetailQuery.isPending,
+    isMyPayrollLoading: loadMine && myPayrollQuery.isPending,
     periodsError: periodsQuery.error
       ? getErrorMessage(periodsQuery.error, 'Unable to load payroll periods.')
       : null,

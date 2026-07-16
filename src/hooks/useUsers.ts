@@ -145,3 +145,21 @@ export function useUsers(options: UseUsersOptions = {}) {
     isDeleting: deleteUserMutation.isPending,
   };
 }
+
+export function useUser(userId?: string | null, options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options;
+  
+  const userQuery = useQuery({
+    queryKey: [...userQueryKeys.all, userId!],
+    queryFn: () => userService.getById(userId!),
+    enabled: enabled && !!userId,
+  });
+
+  return {
+    user: userQuery.data ?? null,
+    isLoading: !!userId && userQuery.isPending,
+    isFetching: !!userId && userQuery.isFetching,
+    error: userQuery.error ? getErrorMessage(userQuery.error) : null,
+    refetch: userQuery.refetch,
+  };
+}

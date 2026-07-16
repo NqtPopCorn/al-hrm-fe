@@ -127,6 +127,11 @@ export const userService = {
     };
   },
 
+  async getById(userId: string) {
+    const response = await api.get<ApiUserAccount>(`/users/${userId}`);
+    return normalizeUserAccount(response);
+  },
+
   async create(payload: UserAccountCreatePayload) {
     const response = await api.post<ApiUserAccount>(
       '/users',

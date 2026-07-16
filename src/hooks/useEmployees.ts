@@ -133,11 +133,25 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     },
   });
 
-  const getSensitiveInfo = async (employeeId: string) => {
-    return queryClient.fetchQuery({
-      queryKey: employeeQueryKeys.sensitive(employeeId),
-      queryFn: () => employeeService.getSensitiveInfo(employeeId),
-    });
+  const setSensitiveInfo = (
+    employeeId: string,
+    sensitiveInfo: EmployeeSensitiveInfo | null,
+  ) => {
+    queryClient.setQueryData(employeeQueryKeys.sensitive(employeeId), sensitiveInfo);
+    queryClient.setQueriesData<PaginatedResponse<Employee>>(
+      { queryKey: employeeQueryKeys.lists() },
+      currentData => {
+        if (!currentData) return currentData;
+        return {
+          ...currentData,
+          data: currentData.data.map(employee =>
+            employee.id === employeeId
+              ? mergeEmployeeSensitiveInfo(employee, sensitiveInfo)
+              : employee,
+          ),
+        };
+      },
+    );
   };
 
   const updateSensitiveInfoMutation = useMutation({
@@ -187,25 +201,11 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
       employeeService.exportDefaultSdlcAccounts(employeeIds),
   });
 
-  const setSensitiveInfo = (
-    employeeId: string,
-    sensitiveInfo: EmployeeSensitiveInfo | null,
-  ) => {
-    queryClient.setQueryData(employeeQueryKeys.sensitive(employeeId), sensitiveInfo);
-    queryClient.setQueriesData<PaginatedResponse<Employee>>(
-      { queryKey: employeeQueryKeys.lists() },
-      currentData => {
-        if (!currentData) return currentData;
-        return {
-          ...currentData,
-          data: currentData.data.map(employee =>
-            employee.id === employeeId
-              ? mergeEmployeeSensitiveInfo(employee, sensitiveInfo)
-              : employee,
-          ),
-        };
-      },
-    );
+  const getSensitiveInfo = async (employeeId: string) => {
+    return queryClient.fetchQuery({
+      queryKey: employeeQueryKeys.sensitive(employeeId),
+      queryFn: () => employeeService.getSensitiveInfo(employeeId),
+    });
   };
 
   return {
@@ -224,7 +224,6 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     ) => updateEmployeeMutation.mutateAsync({ employeeId, payload }),
     disableEmployee: (employeeId: string) =>
       disableEmployeeMutation.mutateAsync(employeeId),
-    getSensitiveInfo,
     updateSensitiveInfo: (
       employeeId: string,
       payload: EmployeeSensitiveUpsertPayload,
@@ -235,6 +234,7 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
       employeeIds: string[],
     ): Promise<ExportDefaultSdlcAccountsResult> =>
       exportDefaultSdlcAccountsMutation.mutateAsync(employeeIds),
+    getSensitiveInfo,
     setSensitiveInfo,
     isCreating: createEmployeeMutation.isPending,
     isUpdating: updateEmployeeMutation.isPending,
@@ -243,5 +243,41 @@ export function useEmployees(options: UseEmployeesOptions = {}) {
     isImporting: importEmployeesMutation.isPending,
     isExportingDefaultSdlcAccounts:
       exportDefaultSdlcAccountsMutation.isPending,
+  };
+}
+
+export function useEmployee(employeeId?: string | null, options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options;
+  
+  const employeeQuery = useQuery({
+    queryKey: [...employeeQueryKeys.all, employeeId!],
+    queryFn: () => employeeService.getById(employeeId!),
+    enabled: enabled && !!employeeId,
+  });
+
+  return {
+    employee: employeeQuery.data ?? null,
+    isLoading: !!employeeId && employeeQuery.isPending,
+    isFetching: !!employeeId && employeeQuery.isFetching,
+    error: employeeQuery.error ? getErrorMessage(employeeQuery.error) : null,
+    refetch: employeeQuery.refetch,
+  };
+}
+
+export function useEmployeeSensitiveInfo(employeeId?: string | null, options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options;
+
+  const sensitiveQuery = useQuery({
+    queryKey: employeeQueryKeys.sensitive(employeeId!),
+    queryFn: () => employeeService.getSensitiveInfo(employeeId!),
+    enabled: enabled && !!employeeId,
+  });
+
+  return {
+    sensitiveInfo: sensitiveQuery.data ?? null,
+    isLoading: sensitiveQuery.isPending,
+    isFetching: sensitiveQuery.isFetching,
+    error: sensitiveQuery.error ? getErrorMessage(sensitiveQuery.error) : null,
+    refetch: sensitiveQuery.refetch,
   };
 }

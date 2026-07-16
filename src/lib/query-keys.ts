@@ -61,3 +61,30 @@ export const payrollQueryKeys = {
   period: (payrollId: string) => [...payrollQueryKeys.all, 'period', payrollId] as const,
   mine: () => [...payrollQueryKeys.all, 'mine'] as const,
 };
+
+export const projectQueryKeys = {
+  all: ['projects'] as const,
+  lists: () => [...projectQueryKeys.all, 'list'] as const,
+  list: (filters: { search?: string; page?: number; limit?: number }) => [...projectQueryKeys.lists(), filters] as const,
+  detail: (projectId: string) => [...projectQueryKeys.all, 'detail', projectId] as const,
+};
+
+export const handoverQueryKeys = {
+  all: ['handovers'] as const,
+  lists: () => [...handoverQueryKeys.all, 'list'] as const,
+  list: () => [...handoverQueryKeys.lists()] as const,
+  detail: (handoverId: string) => [...handoverQueryKeys.all, 'detail', handoverId] as const,
+};
+
+export const settingsQueryKeys = {
+  all: ['settings'] as const,
+  payrollPolicy: () => [...settingsQueryKeys.all, 'payroll-policy'] as const,
+  workLocations: () => [...settingsQueryKeys.all, 'work-locations'] as const,
+};
+
+export const auditLogQueryKeys = {
+  all: ['audit-logs'] as const,
+  lists: () => [...auditLogQueryKeys.all, 'list'] as const,
+  list: (filters: { page?: number; limit?: number }) => [...auditLogQueryKeys.lists(), filters] as const,
+  stats: () => [...auditLogQueryKeys.all, 'stats'] as const,
+};

@@ -356,3 +356,22 @@ export interface Project {
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface SystemAuditLog {
+  _id: string;
+  type: string;
+  severity: string;
+  userId?: string;
+  email?: string;
+  ip?: string;
+  userAgent?: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+export interface AuditLogStats {
+  total: number;
+  bySeverity: Record<string, number>;
+  byType: Record<string, number>;
+  recentCount: number;
+}
