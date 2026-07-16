@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import JoditEditor from 'jodit-react';
 import DOMPurify from 'dompurify';
-import { projectService } from '../services/project.service';
+import { useProject, useProjects } from '../hooks/useProjects';
 import { employeeService } from '../services/employee.service';
 import { FileService } from '../services/file.service';
 import Modal from '../components/Modal';
@@ -36,13 +36,13 @@ export default function ProjectView({ projectId, onBack }: ProjectViewProps) {
   const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState(false);
   const [isSaveVersionModalOpen, setIsSaveVersionModalOpen] = useState(false);
   const [changeNote, setChangeNote] = useState('');
-  const [isLoading, setIsLoading] = useState(!!projectId);
-  const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<ProjectAttachment | null>(null);
   
   const { showToast } = useToast();
+  
+  const { project: fetchedProject, isLoading, error } = useProject(projectId);
+  const { updateProject, createProject, saveHistorySnapshot } = useProjects();
 
   // Form states
   const [title, setTitle] = useState('');
@@ -68,10 +68,21 @@ export default function ProjectView({ projectId, onBack }: ProjectViewProps) {
   const [urlAttachType, setUrlAttachType] = useState('application/pdf');
 
   useEffect(() => {
-    if (projectId) {
-      loadProject();
+    if (fetchedProject) {
+      setProjectData(fetchedProject);
+      if (!isEditing || Object.keys(fetchedProject).length > 0) {
+        setTitle(fetchedProject.name);
+        setCategory(fetchedProject.category || '');
+        setYear(fetchedProject.year ? fetchedProject.year.toString() : '');
+        setScale(fetchedProject.scale || '');
+        setTech(fetchedProject.technologies.join(', '));
+        setContent(fetchedProject.content);
+        setMembers(fetchedProject.members || []);
+        setAttachments(fetchedProject.attachments || []);
+        setHistory(fetchedProject.history || []);
+      }
     }
-  }, [projectId]);
+  }, [fetchedProject]);
 
   useEffect(() => {
     // Basic debounce for employee search
@@ -95,30 +106,11 @@ export default function ProjectView({ projectId, onBack }: ProjectViewProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const loadProject = async () => {
-    setIsLoading(true);
-    try {
-      const data = await projectService.getById(projectId!);
-      setProjectData(data);
-      setTitle(data.name);
-      setCategory(data.category || '');
-      setYear(data.year ? data.year.toString() : '');
-      setScale(data.scale || '');
-      setTech(data.technologies.join(', '));
-      setContent(data.content);
-      setMembers(data.members || []);
-      setAttachments(data.attachments || []);
-      setHistory(data.history || []);
-    } catch (err) {
-      setError('Failed to load project details.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
+
+  const [isSaving, setIsSaving] = useState(false);
   const handleSave = async () => {
     setIsSaving(true);
-    setError(null);
     try {
       const payload = {
         name: title,
@@ -133,20 +125,19 @@ export default function ProjectView({ projectId, onBack }: ProjectViewProps) {
       };
 
       if (projectId) {
-        await projectService.update(projectId, payload);
-        await loadProject();
+        await updateProject(projectId, payload);
         setIsEditing(false);
       } else {
-        const newProj = await projectService.create(payload);
+        const newProj = await createProject(payload);
         // Automatically save initial history snapshot
-        await projectService.saveHistorySnapshot(newProj.id, {
+        await saveHistorySnapshot(newProj.id, {
           content_snapshot: content,
           change_note: 'Initial version',
         });
         onBack();
       }
     } catch (err) {
-      setError('Failed to save project.');
+      showToast({ type: 'error', message: 'Failed to save project.' });
     } finally {
       setIsSaving(false);
     }
@@ -230,7 +221,16 @@ export default function ProjectView({ projectId, onBack }: ProjectViewProps) {
                   <button 
                     onClick={() => {
                       setIsEditing(false);
-                      loadProject(); // reset
+                      if (fetchedProject) {
+                        setTitle(fetchedProject.name);
+                        setCategory(fetchedProject.category || '');
+                        setYear(fetchedProject.year ? fetchedProject.year.toString() : '');
+                        setScale(fetchedProject.scale || '');
+                        setTech(fetchedProject.technologies.join(', '));
+                        setContent(fetchedProject.content);
+                        setMembers(fetchedProject.members || []);
+                        setAttachments(fetchedProject.attachments || []);
+                      }
                     }}
                     className="flex items-center gap-2 px-3 py-1.5 text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium transition-all text-sm"
                   >
@@ -576,15 +576,14 @@ export default function ProjectView({ projectId, onBack }: ProjectViewProps) {
                               
                               try {
                                 showToast({ type: 'success', message: 'Đang khôi phục...' });
-                                await projectService.update(projectId, { content: snap.content_snapshot });
+                                await updateProject(projectId, { content: snap.content_snapshot });
                                 // Save audit trail for the restore action
-                                await projectService.saveHistorySnapshot(projectId, {
+                                await saveHistorySnapshot(projectId, {
                                   content_snapshot: snap.content_snapshot,
                                   change_note: `Khôi phục từ phiên bản: ${snap.change_note || 'N/A'}`,
                                 });
                                 showToast({ type: 'success', message: 'Đã khôi phục thành công!' });
                                 setShowHistory(false);
-                                loadProject(); // Reload project to show new content
                               } catch (e: any) {
                                 showToast({ type: 'error', message: e?.response?.data?.message || 'Lỗi khi khôi phục' });
                               }
@@ -838,13 +837,12 @@ export default function ProjectView({ projectId, onBack }: ProjectViewProps) {
                 if (!projectId) return;
                 try {
                   setIsSaving(true);
-                  await projectService.saveHistorySnapshot(projectId, { content_snapshot: content, change_note: changeNote });
+                  await saveHistorySnapshot(projectId, { content_snapshot: content, change_note: changeNote });
                   showToast({ type: 'success', message: 'Lưu phiên bản thành công!' });
                   setIsSaveVersionModalOpen(false);
                   setChangeNote('');
-                  loadProject();
                 } catch (e: any) {
-                  showToast({ type: 'error', message: e?.response?.data?.message || 'Lỗi khi lưu phiên bản' });
+                  showToast({ type: 'error', message: e?.message || 'Lỗi khi lưu phiên bản' });
                 } finally {
                   setIsSaving(false);
                 }

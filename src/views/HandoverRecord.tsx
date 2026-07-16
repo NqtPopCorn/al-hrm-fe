@@ -21,7 +21,8 @@ import {
   Plus
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { getHandovers, getHandoverById, createHandoverDraft, updateDraft, submitHandover, approveHandover, rejectHandover, resetHandover, adminUpdateSections, HandoverRecord as HandoverType, ManagerReview } from '../services/handover.service';
+import { useHandover, useHandovers } from '../hooks/useHandovers';
+import { HandoverRecord as HandoverType } from '../services/handover.service';
 import { User as AuthUser } from '../types';
 import { useToast } from '../components/Toast';
 
@@ -60,45 +61,40 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   const isManagerView = user?.role === 'Manager' || user?.role === 'Super Admin';
   const isReadOnly = handover?.status === 'APPROVED' || (isManagerView && user?.role !== 'Super Admin');
 
-  useEffect(() => {
-    const fetchHandover = async () => {
-      try {
-        let record = null;
-        if (handoverId) {
-          record = await getHandoverById(handoverId);
-        } else {
-          const data = await getHandovers();
-          if (data.length > 0) record = data[0];
-        }
+  const { handovers } = useHandovers({ enabled: !handoverId });
+  const effectiveHandoverId = handoverId || (handovers && handovers.length > 0 ? (handovers[0]._id || handovers[0].id) : null);
 
-        if (record) {
-          setHandover(record);
-          setDocumentsContent(record.sections?.documents || '');
-          setAssetsContent(record.sections?.assets || '');
-          setAccountsContent(record.sections?.accounts || '');
-          setTasksContent(record.sections?.tasks || '');
-          if (record.managerReview) {
-            setManagerRating(record.managerReview.rating || 0);
-            setManagerComment(record.managerReview.comment || '');
-            setManagerQuality(record.managerReview.quality || '');
-          }
-        }
-      } catch (error) {
-        showToast({ type: 'error', message: 'Không thể tải bản ghi bàn giao.' });
-      } finally {
-        setIsLoading(false);
+  const {
+    handover: fetchedHandover,
+    isLoading: isHandoverLoading,
+    updateDraft,
+    submitHandover,
+    approveHandover,
+    rejectHandover,
+    resetHandover,
+    adminUpdateSections,
+  } = useHandover(effectiveHandoverId, { enabled: !!effectiveHandoverId });
+  
+  const { createHandoverDraft, isCreating } = useHandovers();
+
+  useEffect(() => {
+    if (fetchedHandover) {
+      setHandover(fetchedHandover);
+      setDocumentsContent(fetchedHandover.sections?.documents || '');
+      setAssetsContent(fetchedHandover.sections?.assets || '');
+      setAccountsContent(fetchedHandover.sections?.accounts || '');
+      setTasksContent(fetchedHandover.sections?.tasks || '');
+      if (fetchedHandover.managerReview) {
+        setManagerRating(fetchedHandover.managerReview.rating || 0);
+        setManagerComment(fetchedHandover.managerReview.comment || '');
+        setManagerQuality(fetchedHandover.managerReview.quality || '');
       }
-    };
-    fetchHandover();
-  }, [showToast]);
+    }
+  }, [fetchedHandover]);
 
   const handleSaveDraft = async () => {
-    if (!handover) return;
-    const handoverId = handover._id || handover.id;
-    if (!handoverId) return;
-    
     try {
-      await updateDraft(handoverId, {
+      await updateDraft({
         documents: documentsContent,
         assets: assetsContent,
         accounts: accountsContent,
@@ -111,19 +107,14 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   };
 
   const handleSubmit = async () => {
-    if (!handover) return;
-    const handoverId = handover._id || handover.id;
-    if (!handoverId) return;
-
     try {
-      await updateDraft(handoverId, {
+      await updateDraft({
         documents: documentsContent,
         assets: assetsContent,
         accounts: accountsContent,
         tasks: tasksContent
       });
-      const updated = await submitHandover(handoverId);
-      setHandover(updated);
+      await submitHandover();
       showToast({ type: 'success', message: 'Gửi quản lý duyệt thành công!' });
     } catch (error) {
       showToast({ type: 'error', message: 'Lỗi khi gửi duyệt.' });
@@ -131,17 +122,12 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   };
 
   const handleApprove = async () => {
-    if (!handover) return;
-    const handoverId = handover._id || handover.id;
-    if (!handoverId) return;
-
     try {
-      const updated = await approveHandover(handoverId, {
+      await approveHandover({
         rating: managerRating,
         comment: managerComment,
         quality: managerQuality
       });
-      setHandover(updated);
       showToast({ type: 'success', message: 'Phê duyệt thành công!' });
     } catch (error) {
       showToast({ type: 'error', message: 'Lỗi khi phê duyệt.' });
@@ -149,17 +135,12 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   };
 
   const handleReject = async () => {
-    if (!handover) return;
-    const handoverId = handover._id || handover.id;
-    if (!handoverId) return;
-
     try {
-      const updated = await rejectHandover(handoverId, {
+      await rejectHandover({
         rating: managerRating,
         comment: managerComment,
         quality: managerQuality
       });
-      setHandover(updated);
       showToast({ type: 'success', message: 'Đã lưu đánh giá và yêu cầu làm lại!' });
     } catch (error) {
       showToast({ type: 'error', message: 'Lỗi khi lưu đánh giá.' });
@@ -167,13 +148,8 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   };
 
   const handleReset = async () => {
-    if (!handover) return;
-    const handoverId = handover._id || handover.id;
-    if (!handoverId) return;
-
     try {
-      const updated = await resetHandover(handoverId);
-      setHandover(updated);
+      await resetHandover();
       showToast({ type: 'success', message: 'Mở khóa phiên bản thành công!' });
     } catch (error) {
       showToast({ type: 'error', message: 'Lỗi khi mở khóa.' });
@@ -181,18 +157,13 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   };
 
   const handleAdminSave = async () => {
-    if (!handover) return;
-    const handoverId = handover._id || handover.id;
-    if (!handoverId) return;
-
     try {
-      const updated = await adminUpdateSections(handoverId, {
+      await adminUpdateSections({
         documents: documentsContent,
         assets: assetsContent,
         accounts: accountsContent,
         tasks: tasksContent
       });
-      setHandover(updated);
       showToast({ type: 'success', message: 'Lưu thay đổi thành công!' });
     } catch (error) {
       showToast({ type: 'error', message: 'Lỗi khi lưu thay đổi.' });
@@ -201,18 +172,15 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   
   const handleCreateDraft = async () => {
     try {
-      setIsLoading(true);
-      const newHandover = await createHandoverDraft();
-      setHandover(newHandover);
+      await createHandoverDraft();
       showToast({ type: 'success', message: 'Tạo bản nháp bàn giao thành công!' });
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : 'Lỗi khi tạo bản nháp bàn giao.';
       showToast({ type: 'error', message: errorMessage });
-      setIsLoading(false);
     }
   };
   
-  if (isLoading) return <div className="p-8 flex justify-center"><div className="w-8 h-8 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" /></div>;
+  if (isHandoverLoading || isCreating) return <div className="p-8 flex justify-center"><div className="w-8 h-8 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" /></div>;
   if (!handover) {
     if (user?.role === 'Employee') {
       return (

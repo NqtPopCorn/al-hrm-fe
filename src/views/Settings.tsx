@@ -2,15 +2,10 @@ import { useEffect, useState } from 'react';
 import { Clock, Loader2, Mail, MapPin, Save, Shield, ShieldAlert } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
+import { useSettings } from '../hooks/useSettings';
 import { mockShiftConfig } from '../mockData';
-import {
-  PayrollPolicyConfig,
-  settingsService,
-} from '../services/settings.service';
-import {
-  WorkLocationConfig,
-  workLocationService,
-} from '../services/work-location.service';
+import { PayrollPolicyConfig } from '../services/settings.service';
+import { WorkLocationConfig } from '../services/work-location.service';
 
 function showDeferredFeatureAlert(featureName: string) {
   window.alert(
@@ -180,6 +175,17 @@ function getPayrollInputClass(hasError: boolean, isReadOnly = false): string {
 
 export default function Settings() {
   const { showToast } = useToast();
+  const { 
+    payrollPolicy: fetchedPayrollPolicy, 
+    workLocation: fetchedWorkLocation,
+    isPayrollPolicyLoading,
+    isWorkLocationLoading,
+    savePayrollPolicy,
+    saveWorkLocation,
+    isSavingPayrollPolicy,
+    isSavingWorkLocation
+  } = useSettings();
+
   const [payrollPolicy, setPayrollPolicy] = useState<PayrollPolicyConfig>(
     defaultPayrollPolicy,
   );
@@ -188,9 +194,8 @@ export default function Settings() {
       toPayrollPolicyInputState(defaultPayrollPolicy),
     );
   const [hasLoadedPayrollPolicy, setHasLoadedPayrollPolicy] = useState(false);
-  const [isLoadingPayroll, setIsLoadingPayroll] = useState(true);
-  const [isSavingPayroll, setIsSavingPayroll] = useState(false);
   const [payrollSaveError, setPayrollSaveError] = useState<string | null>(null);
+  
   const [locationConfig, setLocationConfig] = useState<WorkLocationConfig>({
     officeIp: '',
     wifiSsid: '',
@@ -198,56 +203,30 @@ export default function Settings() {
     gpsLng: undefined,
     gpsRadiusMeters: 100,
   });
-  const [isLoadingLocation, setIsLoadingLocation] = useState(true);
-  const [isSavingLocation, setIsSavingLocation] = useState(false);
   const [locationSaveError, setLocationSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    setIsLoadingPayroll(true);
-    settingsService
-      .getPayrollPolicy()
-      .then(policy => {
-        if (cancelled) return;
-        setPayrollPolicy(policy);
-        setPayrollPolicyInputs(toPayrollPolicyInputState(policy));
-        setHasLoadedPayrollPolicy(true);
-        setPayrollSaveError(null);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setHasLoadedPayrollPolicy(false);
-        setPayrollSaveError('Không thể tải chính sách lương.');
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingPayroll(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (fetchedPayrollPolicy) {
+      setPayrollPolicy(fetchedPayrollPolicy);
+      setPayrollPolicyInputs(toPayrollPolicyInputState(fetchedPayrollPolicy));
+      setHasLoadedPayrollPolicy(true);
+      setPayrollSaveError(null);
+    }
+  }, [fetchedPayrollPolicy]);
 
   useEffect(() => {
-    let cancelled = false;
-    setIsLoadingLocation(true);
-    workLocationService.getActive().then(config => {
-      if (cancelled) return;
-      if (config) {
-        setLocationConfig({
-          officeIp: config.officeIp ?? '',
-          wifiSsid: config.wifiSsid ?? '',
-          gpsLat: config.gpsLat ?? undefined,
-          gpsLng: config.gpsLng ?? undefined,
-          gpsRadiusMeters: config.gpsRadiusMeters ?? 100,
-        });
-      }
-      setIsLoadingLocation(false);
-    });
-    return () => { cancelled = true; };
-  }, []);
+    if (fetchedWorkLocation) {
+      setLocationConfig({
+        officeIp: fetchedWorkLocation.officeIp ?? '',
+        wifiSsid: fetchedWorkLocation.wifiSsid ?? '',
+        gpsLat: fetchedWorkLocation.gpsLat ?? undefined,
+        gpsLng: fetchedWorkLocation.gpsLng ?? undefined,
+        gpsRadiusMeters: fetchedWorkLocation.gpsRadiusMeters ?? 100,
+      });
+    }
+  }, [fetchedWorkLocation]);
+
+
 
   const handleSavePayrollPolicy = async () => {
     if (!hasLoadedPayrollPolicy || hasPayrollValidationError) {
@@ -259,10 +238,8 @@ export default function Settings() {
       return;
     }
 
-    setIsSavingPayroll(true);
-    setPayrollSaveError(null);
     try {
-      const saved = await settingsService.savePayrollPolicy(payrollPolicy);
+      const saved = await savePayrollPolicy(payrollPolicy);
       setPayrollPolicy(saved);
       setPayrollPolicyInputs(toPayrollPolicyInputState(saved));
       setHasLoadedPayrollPolicy(true);
@@ -271,8 +248,6 @@ export default function Settings() {
       const msg = err instanceof Error ? err.message : 'Không thể lưu chính sách lương.';
       setPayrollSaveError(msg);
       showToast({ type: 'error', message: msg });
-    } finally {
-      setIsSavingPayroll(false);
     }
   };
 
@@ -421,10 +396,9 @@ export default function Settings() {
   };
 
   const handleSaveLocation = async () => {
-    setIsSavingLocation(true);
     setLocationSaveError(null);
     try {
-      await workLocationService.saveConfig({
+      await saveWorkLocation({
         officeIp: locationConfig.officeIp || null,
         wifiSsid: locationConfig.wifiSsid || null,
         gpsLat: locationConfig.gpsLat ?? null,
@@ -436,8 +410,6 @@ export default function Settings() {
       const msg = err instanceof Error ? err.message : 'Không thể lưu cấu hình.';
       setLocationSaveError(msg);
       showToast({ type: 'error', message: msg });
-    } finally {
-      setIsSavingLocation(false);
     }
   };
 
@@ -476,7 +448,7 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-            {isLoadingPayroll ? (
+            {isPayrollPolicyLoading ? (
               <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
             ) : null}
           </div>
@@ -502,7 +474,7 @@ export default function Settings() {
                   onChange={event =>
                     handleStandardWorkingDaysChange(event.target.value)
                   }
-                  disabled={isLoadingPayroll || isSavingPayroll}
+                  disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                   className={getPayrollInputClass(standardWorkingDaysError)}
                 />
               </div>
@@ -533,7 +505,7 @@ export default function Settings() {
                       event.target.value,
                     )
                   }
-                  disabled={isLoadingPayroll || isSavingPayroll}
+                  disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                   className={getPayrollInputClass(insuranceSalaryCapError)}
                 />
               </div>
@@ -553,7 +525,7 @@ export default function Settings() {
                       event.target.value,
                     )
                   }
-                  disabled={isLoadingPayroll || isSavingPayroll}
+                  disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                   className={getPayrollInputClass(regionalMinimumWageError)}
                 />
               </div>
@@ -585,7 +557,7 @@ export default function Settings() {
                         event.target.value,
                       )
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className={getPayrollInputClass(employeeSocialInsuranceError)}
                   />
                 </div>
@@ -605,7 +577,7 @@ export default function Settings() {
                         event.target.value,
                       )
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className={getPayrollInputClass(employeeHealthInsuranceError)}
                   />
                 </div>
@@ -625,7 +597,7 @@ export default function Settings() {
                         event.target.value,
                       )
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className={getPayrollInputClass(
                       employeeUnemploymentInsuranceError,
                     )}
@@ -660,7 +632,7 @@ export default function Settings() {
                         event.target.value,
                       )
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className={getPayrollInputClass(employerSocialInsuranceError)}
                   />
                 </div>
@@ -680,7 +652,7 @@ export default function Settings() {
                         event.target.value,
                       )
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className={getPayrollInputClass(employerHealthInsuranceError)}
                   />
                 </div>
@@ -700,7 +672,7 @@ export default function Settings() {
                         event.target.value,
                       )
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className={getPayrollInputClass(
                       employerUnemploymentInsuranceError,
                     )}
@@ -722,7 +694,7 @@ export default function Settings() {
                         event.target.value,
                       )
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className={getPayrollInputClass(
                       employerOccupationalAccidentInsuranceError,
                     )}
@@ -759,7 +731,7 @@ export default function Settings() {
                         },
                       }))
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                   />
                   <span>Cảnh báo nếu mức đóng bảo hiểm thấp hơn lương tối thiểu vùng.</span>
@@ -777,7 +749,7 @@ export default function Settings() {
                         },
                       }))
                     }
-                    disabled={isLoadingPayroll || isSavingPayroll}
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
                     className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                   />
                   <span>Cảnh báo nếu lương thực nhận bị âm.</span>
@@ -821,19 +793,19 @@ export default function Settings() {
               type="button"
               onClick={() => void handleSavePayrollPolicy()}
               disabled={
-                isSavingPayroll ||
-                isLoadingPayroll ||
+                isSavingPayrollPolicy ||
+                isPayrollPolicyLoading ||
                 !hasLoadedPayrollPolicy ||
                 hasPayrollValidationError
               }
               className="inline-flex w-full items-center justify-center rounded-md bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSavingPayroll ? (
+              {isSavingPayrollPolicy ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Save className="mr-2 h-4 w-4" />
               )}
-              {isSavingPayroll ? 'Đang lưu...' : 'Lưu chính sách lương'}
+              {isSavingPayrollPolicy ? 'Đang lưu...' : 'Lưu chính sách lương'}
             </button>
           </div>
         </div>
@@ -982,7 +954,7 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-            {isLoadingLocation && (
+            {isWorkLocationLoading && (
               <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
             )}
           </div>
@@ -999,7 +971,7 @@ export default function Settings() {
                 onChange={e =>
                   setLocationConfig(c => ({ ...c, officeIp: e.target.value }))
                 }
-                disabled={isLoadingLocation}
+                disabled={isWorkLocationLoading}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
               />
             </div>
@@ -1014,7 +986,7 @@ export default function Settings() {
                 onChange={e =>
                   setLocationConfig(c => ({ ...c, wifiSsid: e.target.value }))
                 }
-                disabled={isLoadingLocation}
+                disabled={isWorkLocationLoading}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
               />
             </div>
@@ -1034,7 +1006,7 @@ export default function Settings() {
                       gpsLat: e.target.value ? Number(e.target.value) : undefined,
                     }))
                   }
-                  disabled={isLoadingLocation}
+                  disabled={isWorkLocationLoading}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
                 />
               </div>
@@ -1053,7 +1025,7 @@ export default function Settings() {
                       gpsLng: e.target.value ? Number(e.target.value) : undefined,
                     }))
                   }
-                  disabled={isLoadingLocation}
+                  disabled={isWorkLocationLoading}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
                 />
               </div>
@@ -1073,7 +1045,7 @@ export default function Settings() {
                     gpsRadiusMeters: Number(e.target.value),
                   }))
                 }
-                disabled={isLoadingLocation}
+                disabled={isWorkLocationLoading}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
               />
             </div>
@@ -1087,15 +1059,15 @@ export default function Settings() {
             <button
               type="button"
               onClick={() => void handleSaveLocation()}
-              disabled={isSavingLocation || isLoadingLocation}
+              disabled={isSavingWorkLocation || isWorkLocationLoading}
               className="inline-flex w-full items-center justify-center rounded-md bg-orange-600 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSavingLocation ? (
+              {isSavingWorkLocation ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Save className="mr-2 h-4 w-4" />
               )}
-              {isSavingLocation ? 'Đang lưu...' : 'Lưu cấu hình'}
+              {isSavingWorkLocation ? 'Đang lưu...' : 'Lưu cấu hình'}
             </button>
           </div>
         </div>

@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { getHandovers, HandoverRecord } from '../services/handover.service';
+import React from 'react';
+import { useHandovers } from '../hooks/useHandovers';
 import { User as AuthUser } from '../types';
 import { useToast } from '../components/Toast';
-import { FileText, Eye, Clock, User, Building2, ChevronRight } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { Eye } from 'lucide-react';
 
 interface HandoverListProps {
   user: AuthUser;
@@ -11,23 +10,7 @@ interface HandoverListProps {
 }
 
 export default function HandoverList({ user, onSelect }: HandoverListProps) {
-  const { showToast } = useToast();
-  const [handovers, setHandovers] = useState<HandoverRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchHandovers = async () => {
-      try {
-        const data = await getHandovers();
-        setHandovers(data);
-      } catch (error) {
-        showToast({ type: 'error', message: 'Lỗi khi tải danh sách bàn giao.' });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchHandovers();
-  }, [showToast]);
+  const { handovers, isLoading, error } = useHandovers();
 
   const getStatusBadge = (status: string) => {
     switch (status) {

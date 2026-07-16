@@ -782,176 +782,178 @@ export default function Employees({ userRole }: { userRole: Role }) {
               No employees matched the current filters.
             </div>
           ) : (
-            <table className="w-full text-left">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    <input
-                      type="checkbox"
-                      checked={areAllSelectableRowsSelected}
-                      onChange={event => {
-                        setSelectedEmployeeIds(current =>
-                          event.target.checked
-                            ? Array.from(new Set([...current, ...selectableIdsOnPage]))
-                            : current.filter(id => !selectableIdsOnPage.includes(id)),
-                        );
-                      }}
-                    />
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Employee
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Department
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Work Status
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Email Status
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {employees.map(employee => {
-                  const departmentName = getDepartmentName(
-                    departments,
-                    employee.departmentId,
-                  );
-                  const position = getPosition(positions, employee.positionId);
-                  const exportBlockers = getEmployeeExportBlockers(employee);
-                  const isExportEligible = isEmployeeExportEligible(employee);
-                  const isSelected = selectedEmployeeIds.includes(employee.id);
+            <div className='overflow-x-auto'>
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      <input
+                        type="checkbox"
+                        checked={areAllSelectableRowsSelected}
+                        onChange={event => {
+                          setSelectedEmployeeIds(current =>
+                            event.target.checked
+                              ? Array.from(new Set([...current, ...selectableIdsOnPage]))
+                              : current.filter(id => !selectableIdsOnPage.includes(id)),
+                          );
+                        }}
+                      />
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Employee
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Role
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Department
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Work Status
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Email Status
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {employees.map(employee => {
+                    const departmentName = getDepartmentName(
+                      departments,
+                      employee.departmentId,
+                    );
+                    const position = getPosition(positions, employee.positionId);
+                    const exportBlockers = getEmployeeExportBlockers(employee);
+                    const isExportEligible = isEmployeeExportEligible(employee);
+                    const isSelected = selectedEmployeeIds.includes(employee.id);
 
-                  return (
-                    <tr
-                      key={employee.id}
-                      className="hover:bg-slate-50 transition-colors"
-                    >
-                      <td className="px-4 py-4 align-top">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          disabled={!isExportEligible}
-                          onChange={event => {
-                            setSelectedEmployeeIds(current =>
-                              event.target.checked
-                                ? Array.from(new Set([...current, employee.id]))
-                                : current.filter(id => id !== employee.id),
-                            );
-                          }}
-                        />
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded bg-slate-200 flex-shrink-0 flex items-center justify-center text-slate-600 font-medium text-sm">
-                            {employee.name.charAt(0)}
-                          </div>
-                          <div>
-                            <span className="text-sm font-medium">
-                              {employee.name}
-                            </span>
-                            <p className="text-xs text-slate-500 flex items-center mt-0.5">
-                              <Mail className="w-3 h-3 mr-1" />
-                              {employee.companyEmail}
-                            </p>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              Personal: {employee.personalEmail || 'Not updated'}
-                            </p>
-                            {exportBlockers.length > 0 ? (
-                              <p className="text-xs text-amber-700 mt-1">
-                                {exportBlockers.join(' - ')}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
-                          {employee.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-medium">
-                          {position?.title || 'Unassigned'}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {departmentName || 'No department'}
-                        </p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.workStatus === 'ACTIVE'
-                            ? 'bg-green-50 text-green-700'
-                            : 'bg-amber-100 text-amber-700'
-                            }`}
-                        >
-                          {formatWorkStatusLabel(employee.workStatus)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.isActive === false
-                            ? 'bg-slate-100 text-slate-600'
-                            : 'bg-green-100 text-green-700'
-                            }`}
-                        >
-                          {employee.isActive === false ? 'Inactive' : 'Active'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={event => {
-                              event.stopPropagation();
-                              setSelectedEmployeeId(employee.id);
+                    return (
+                      <tr
+                        key={employee.id}
+                        className="hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-4 py-4 align-top">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={!isExportEligible}
+                            onChange={event => {
+                              setSelectedEmployeeIds(current =>
+                                event.target.checked
+                                  ? Array.from(new Set([...current, employee.id]))
+                                  : current.filter(id => id !== employee.id),
+                              );
                             }}
-                            className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
-                            title="View details"
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-slate-200 flex-shrink-0 flex items-center justify-center text-slate-600 font-medium text-sm">
+                              {employee.name.charAt(0)}
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium">
+                                {employee.name}
+                              </span>
+                              <p className="text-xs text-slate-500 flex items-center mt-0.5">
+                                <Mail className="w-3 h-3 mr-1" />
+                                {employee.companyEmail}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Personal: {employee.personalEmail || 'Not updated'}
+                              </p>
+                              {exportBlockers.length > 0 ? (
+                                <p className="text-xs text-amber-700 mt-1">
+                                  {exportBlockers.join(' - ')}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
+                            {employee.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium">
+                            {position?.title || 'Unassigned'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {departmentName || 'No department'}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.workStatus === 'ACTIVE'
+                              ? 'bg-green-50 text-green-700'
+                              : 'bg-amber-100 text-amber-700'
+                              }`}
                           >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          {employee.isActive !== false ? (
-                            <>
-                              <button
-                                onClick={event => {
-                                  event.stopPropagation();
-                                  void openEditModal(employee);
-                                }}
-                                className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
-                                title="Edit employee"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={event => {
-                                  event.stopPropagation();
-                                  openDisableEmployeeModal(employee);
-                                }}
-                                className="text-xs font-medium text-rose-600 hover:text-rose-700 transition-colors"
-                                title="Disable employee"
-                              >
-                                <ShieldBan className="w-4 h-4" />
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-xs font-medium text-slate-400">
-                              Disabled
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            {formatWorkStatusLabel(employee.workStatus)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.isActive === false
+                              ? 'bg-slate-100 text-slate-600'
+                              : 'bg-green-100 text-green-700'
+                              }`}
+                          >
+                            {employee.isActive === false ? 'Inactive' : 'Active'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              onClick={event => {
+                                event.stopPropagation();
+                                setSelectedEmployeeId(employee.id);
+                              }}
+                              className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
+                              title="View details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {employee.isActive !== false ? (
+                              <>
+                                <button
+                                  onClick={event => {
+                                    event.stopPropagation();
+                                    void openEditModal(employee);
+                                  }}
+                                  className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
+                                  title="Edit employee"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={event => {
+                                    event.stopPropagation();
+                                    openDisableEmployeeModal(employee);
+                                  }}
+                                  className="text-xs font-medium text-rose-600 hover:text-rose-700 transition-colors"
+                                  title="Disable employee"
+                                >
+                                  <ShieldBan className="w-4 h-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs font-medium text-slate-400">
+                                Disabled
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
           {employees.length > 0 ? (
             <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between bg-slate-50 gap-4">

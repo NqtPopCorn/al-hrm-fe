@@ -8,7 +8,7 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
-import { projectService, ProjectListParams } from '../services/project.service';
+import { useProjects } from '../hooks/useProjects';
 import { Project } from '../types';
 import DOMPurify from 'dompurify';
 
@@ -23,13 +23,24 @@ export default function Projects({ onViewDetail, onCreateNew }: ProjectsProps) {
   const [searchYear, setSearchYear] = useState('');
   const [searchScale, setSearchScale] = useState('');
   
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const limit = 9; // Show 9 per page in grid
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  const {
+    projects,
+    total,
+    isLoading,
+    error,
+    deleteProject
+  } = useProjects({
+    page,
+    limit,
+    name: searchTerm || undefined,
+    tech: searchTech || undefined,
+    year: searchYear ? parseInt(searchYear) : undefined,
+    scale: searchScale || undefined,
+  });
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -37,32 +48,6 @@ export default function Projects({ onViewDetail, onCreateNew }: ProjectsProps) {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
-
-  const fetchProjects = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const params: ProjectListParams = { page, limit };
-      if (searchTerm) params.name = searchTerm;
-      if (searchTech) params.tech = searchTech;
-      if (searchYear) params.year = parseInt(searchYear);
-      if (searchScale) params.scale = searchScale;
-
-      const res = await projectService.list(params);
-      setProjects(res.data);
-      setTotal(res.total);
-    } catch (err) {
-      console.error('Failed to fetch projects', err);
-      setError('Failed to load projects. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProjects();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, searchTech, searchYear, searchScale, page]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -189,8 +174,7 @@ export default function Projects({ onViewDetail, onCreateNew }: ProjectsProps) {
                           setActiveDropdown(null);
                           if (window.confirm('Bạn có chắc chắn muốn xóa dự án này?')) {
                             try {
-                              await projectService.delete(project.id);
-                              fetchProjects();
+                              await deleteProject(project.id);
                             } catch (e) {
                               alert('Lỗi khi xóa dự án');
                             }
