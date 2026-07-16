@@ -8,6 +8,8 @@ export interface ProjectListParams {
   scale?: string;
   category?: string;
   tags?: string;
+  page?: number;
+  limit?: number;
 }
 
 export type CreateProjectPayload = Omit<
@@ -19,7 +21,7 @@ export type UpdateProjectPayload = Partial<CreateProjectPayload>;
 
 export const projectService = {
   async list(params: ProjectListParams = {}) {
-    const response = await api.get<Project[]>('/projects', {
+    const response = await api.get<{ data: Project[]; total: number }>('/projects', {
       query: params as Record<string, string | number | boolean | null | undefined>,
     });
     return response;

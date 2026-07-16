@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { projectService, ProjectListParams } from '../services/project.service';
 import { Project } from '../types';
+import DOMPurify from 'dompurify';
 
 interface ProjectsProps {
   onViewDetail: (projectId: string) => void;
@@ -23,21 +24,33 @@ export default function Projects({ onViewDetail, onCreateNew }: ProjectsProps) {
   const [searchScale, setSearchScale] = useState('');
   
   const [projects, setProjects] = useState<Project[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const limit = 9; // Show 9 per page in grid
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setActiveDropdown(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const fetchProjects = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const params: ProjectListParams = {};
+      const params: ProjectListParams = { page, limit };
       if (searchTerm) params.name = searchTerm;
       if (searchTech) params.tech = searchTech;
       if (searchYear) params.year = parseInt(searchYear);
       if (searchScale) params.scale = searchScale;
 
-      const data = await projectService.list(params);
-      setProjects(data);
+      const res = await projectService.list(params);
+      setProjects(res.data);
+      setTotal(res.total);
     } catch (err) {
       console.error('Failed to fetch projects', err);
       setError('Failed to load projects. Please try again.');
@@ -49,6 +62,11 @@ export default function Projects({ onViewDetail, onCreateNew }: ProjectsProps) {
   useEffect(() => {
     fetchProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, searchTech, searchYear, searchScale, page]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
   }, [searchTerm, searchTech, searchYear, searchScale]);
 
   return (
@@ -143,16 +161,54 @@ export default function Projects({ onViewDetail, onCreateNew }: ProjectsProps) {
                 <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
                   {project.category || 'N/A'}
                 </span>
-                <button className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 transition-colors">
-                  <MoreVertical className="w-5 h-5" />
-                </button>
+                <div className="relative">
+                  <button 
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveDropdown(activeDropdown === project.id ? null : project.id);
+                    }}
+                  >
+                    <MoreVertical className="w-5 h-5" />
+                  </button>
+                  
+                  {activeDropdown === project.id && (
+                    <div className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-10 py-1" onClick={e => e.stopPropagation()}>
+                      <button 
+                        className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                        onClick={() => {
+                          setActiveDropdown(null);
+                          onViewDetail(project.id);
+                        }}
+                      >
+                        Xem chi tiết
+                      </button>
+                      <button 
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                        onClick={async () => {
+                          setActiveDropdown(null);
+                          if (window.confirm('Bạn có chắc chắn muốn xóa dự án này?')) {
+                            try {
+                              await projectService.delete(project.id);
+                              fetchProjects();
+                            } catch (e) {
+                              alert('Lỗi khi xóa dự án');
+                            }
+                          }
+                        }}
+                      >
+                        Xóa dự án
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               
               <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-blue-600 transition-colors line-clamp-2">
                 {project.name}
               </h3>
               
-              <div className="text-slate-500 text-sm mb-4 flex-grow line-clamp-3" dangerouslySetInnerHTML={{ __html: project.content }} />
+              <div className="text-slate-500 text-sm mb-4 flex-grow line-clamp-3" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(project.content) }} />
               
               <div className="space-y-4 mt-auto border-t border-slate-100 pt-4">
                 {project.technologies?.length > 0 && (
@@ -195,6 +251,72 @@ export default function Projects({ onViewDetail, onCreateNew }: ProjectsProps) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!isLoading && total > limit && (
+        <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6 rounded-xl shadow-sm">
+          <div className="flex flex-1 justify-between sm:hidden">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Trang trước
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(Math.ceil(total / limit), p + 1))}
+              disabled={page >= Math.ceil(total / limit)}
+              className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Trang sau
+            </button>
+          </div>
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-slate-700">
+                Hiển thị <span className="font-medium">{(page - 1) * limit + 1}</span> đến <span className="font-medium">{Math.min(page * limit, total)}</span> trong tổng số <span className="font-medium">{total}</span> dự án
+              </p>
+            </div>
+            <div>
+              <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                >
+                  <span className="sr-only">Trang trước</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {[...Array(Math.ceil(total / limit))].map((_, i) => (
+                  <button
+                    key={i + 1}
+                    onClick={() => setPage(i + 1)}
+                    className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold focus:z-20 focus:outline-offset-0 ${
+                      page === i + 1
+                        ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                        : 'text-slate-900 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setPage(p => Math.min(Math.ceil(total / limit), p + 1))}
+                  disabled={page >= Math.ceil(total / limit)}
+                  className="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                >
+                  <span className="sr-only">Trang sau</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </nav>
+            </div>
+          </div>
         </div>
       )}
     </div>
