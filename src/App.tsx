@@ -17,6 +17,8 @@ import Payroll from './views/Payroll';
 import Recruitment from './views/Recruitment';
 import Documents from './views/Documents';
 import Settings from './views/Settings';
+import ProjectWrapper from './views/ProjectWrapper';
+import HandoverWrapper from './views/HandoverWrapper';
 import { User } from './types';
 import { authService } from './services/auth.service';
 import { useToast } from './components/Toast';
@@ -125,6 +127,10 @@ export default function App() {
         return <Recruitment />;
       case 'documents':
         return <Documents userRole={user.role} />;
+      case 'projects':
+        return <ProjectWrapper />;
+      case 'handover_record':
+        return <HandoverWrapper user={user} />;
       case 'settings':
         return <Settings />;
       default:
@@ -154,6 +160,10 @@ export default function App() {
         return 'Tuyển dụng';
       case 'documents':
         return 'Tài liệu';
+      case 'projects':
+        return 'Dự án';
+      case 'handover_record':
+        return 'Bàn giao công việc';
       case 'settings':
         return 'Cài đặt';
       default:

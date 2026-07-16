@@ -9,6 +9,7 @@ import {
   LogOut,
   Building2,
   Shield,
+  SendToBack,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Role } from '../types';
@@ -24,6 +25,8 @@ export type AppTab =
   | 'payroll'
   | 'recruitment'
   | 'documents'
+  | 'projects'
+  | 'handover_record'
   | 'settings';
 
 type NavItem = {
@@ -101,6 +104,18 @@ const navItems: NavItem[] = [
     id: 'documents',
     label: 'Tài liệu',
     icon: FileText,
+    roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
+  },
+  {
+    id: 'projects',
+    label: 'Dự án',
+    icon: Briefcase,
+    roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
+  },
+  {
+    id: 'handover_record',
+    label: 'Bàn giao',
+    icon: SendToBack,
     roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
   },
   {
