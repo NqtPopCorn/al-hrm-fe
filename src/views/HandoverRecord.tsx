@@ -21,7 +21,7 @@ import {
   Plus
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { getHandovers, getHandoverById, createHandoverDraft, updateDraft, submitHandover, approveHandover, HandoverRecord as HandoverType } from '../services/handover.service';
+import { getHandovers, getHandoverById, createHandoverDraft, updateDraft, submitHandover, approveHandover, rejectHandover, resetHandover, adminUpdateSections, HandoverRecord as HandoverType, ManagerReview } from '../services/handover.service';
 import { User as AuthUser } from '../types';
 import { useToast } from '../components/Toast';
 
@@ -47,6 +47,7 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   const { showToast } = useToast();
   const [managerRating, setManagerRating] = useState<number>(0);
   const [managerComment, setManagerComment] = useState('');
+  const [managerQuality, setManagerQuality] = useState('');
   
   const [handover, setHandover] = useState<HandoverType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,7 +58,7 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
   const [tasksContent, setTasksContent] = useState('');
 
   const isManagerView = user?.role === 'Manager' || user?.role === 'Super Admin';
-  const isReadOnly = handover?.status !== 'DRAFT';
+  const isReadOnly = handover?.status === 'APPROVED' || (isManagerView && user?.role !== 'Super Admin');
 
   useEffect(() => {
     const fetchHandover = async () => {
@@ -79,6 +80,7 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
           if (record.managerReview) {
             setManagerRating(record.managerReview.rating || 0);
             setManagerComment(record.managerReview.comment || '');
+            setManagerQuality(record.managerReview.quality || '');
           }
         }
       } catch (error) {
@@ -136,12 +138,64 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
     try {
       const updated = await approveHandover(handoverId, {
         rating: managerRating,
-        comment: managerComment
+        comment: managerComment,
+        quality: managerQuality
       });
       setHandover(updated);
       showToast({ type: 'success', message: 'Phê duyệt thành công!' });
     } catch (error) {
       showToast({ type: 'error', message: 'Lỗi khi phê duyệt.' });
+    }
+  };
+
+  const handleReject = async () => {
+    if (!handover) return;
+    const handoverId = handover._id || handover.id;
+    if (!handoverId) return;
+
+    try {
+      const updated = await rejectHandover(handoverId, {
+        rating: managerRating,
+        comment: managerComment,
+        quality: managerQuality
+      });
+      setHandover(updated);
+      showToast({ type: 'success', message: 'Đã lưu đánh giá và yêu cầu làm lại!' });
+    } catch (error) {
+      showToast({ type: 'error', message: 'Lỗi khi lưu đánh giá.' });
+    }
+  };
+
+  const handleReset = async () => {
+    if (!handover) return;
+    const handoverId = handover._id || handover.id;
+    if (!handoverId) return;
+
+    try {
+      const updated = await resetHandover(handoverId);
+      setHandover(updated);
+      showToast({ type: 'success', message: 'Mở khóa phiên bản thành công!' });
+    } catch (error) {
+      showToast({ type: 'error', message: 'Lỗi khi mở khóa.' });
+    }
+  };
+
+  const handleAdminSave = async () => {
+    if (!handover) return;
+    const handoverId = handover._id || handover.id;
+    if (!handoverId) return;
+
+    try {
+      const updated = await adminUpdateSections(handoverId, {
+        documents: documentsContent,
+        assets: assetsContent,
+        accounts: accountsContent,
+        tasks: tasksContent
+      });
+      setHandover(updated);
+      showToast({ type: 'success', message: 'Lưu thay đổi thành công!' });
+    } catch (error) {
+      showToast({ type: 'error', message: 'Lỗi khi lưu thay đổi.' });
     }
   };
   
@@ -192,7 +246,7 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
             <div>
               <h1 className="text-2xl font-bold text-slate-900 mb-2">Biên bản Bàn giao Công việc</h1>
               <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
-                <span className="flex items-center gap-1.5"><User className="w-4 h-4" /> {handover.employeeId?.name} ({handover.employeeId?.code})</span>
+                <span className="flex items-center gap-1.5"><User className="w-4 h-4" /> {handover.employeeSnapshot?.employeeName || (handover.employeeId as any)?.fullName || handover.employeeId?.name} ({handover.employeeSnapshot?.employeeCode || handover.employeeId?.code})</span>
                 <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4" /> {handover.departmentId?.name || 'Chưa xác định'}</span>
               </div>
             </div>
@@ -211,7 +265,7 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
           <div className="mt-6 pt-6 border-t border-slate-100 flex flex-wrap gap-x-8 gap-y-2 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-slate-500">Người bàn giao:</span>
-              <span className="font-medium text-slate-900">{handover.employeeId?.name}</span>
+              <span className="font-medium text-slate-900">{handover.employeeSnapshot?.employeeName || (handover.employeeId as any)?.fullName || handover.employeeId?.name}</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-slate-500">Người tiếp nhận/Quản lý:</span>
@@ -310,19 +364,7 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
           </div>
         </div>
 
-        {/* Employee Action Buttons (Hidden in Manager View ideally, but shown here for UI prototype) */}
-        {!isReadOnly && (
-          <div className="flex items-center justify-end gap-4 pt-4">
-            <button onClick={handleSaveDraft} className="flex items-center px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm">
-              <Save className="w-4 h-4 mr-2" />
-              Lưu nháp
-            </button>
-            <button onClick={handleSubmit} className="flex items-center px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm">
-              <Send className="w-4 h-4 mr-2" />
-              Gửi quản lý duyệt
-            </button>
-          </div>
-        )}
+
       </div>
 
       {/* Sidebar: Manager Review Section */}
@@ -334,10 +376,11 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
               <p className="text-slate-400 text-sm mt-1">Dành cho người tiếp nhận bàn giao</p>
             </div>
             
-            <div className={cn(
-              "p-6 space-y-6",
-              handover.status === 'DRAFT' && "opacity-50 pointer-events-none"
-            )}>
+            <div className="p-6 space-y-6">
+              <div className={cn(
+                "space-y-6",
+                handover.status === 'DRAFT' && "opacity-50 pointer-events-none"
+              )}>
               {/* Star Rating */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-3">
@@ -348,8 +391,9 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
                     <button
                       key={star}
                       type="button"
-                      onClick={() => setManagerRating(star)}
-                      className="focus:outline-none transition-transform hover:scale-110"
+                      onClick={() => isManagerView && setManagerRating(star)}
+                      className={cn("focus:outline-none transition-transform", isManagerView && "hover:scale-110", !isManagerView && "cursor-default")}
+                      disabled={!isManagerView}
                     >
                       <Star 
                         className={cn(
@@ -379,7 +423,12 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
                   Đánh giá chung
                 </label>
                 <div className="relative">
-                  <select className="w-full appearance-none bg-slate-50 border border-slate-300 text-slate-700 py-2.5 px-4 pr-8 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                  <select 
+                    value={managerQuality}
+                    className="w-full appearance-none bg-slate-50 border border-slate-300 text-slate-700 py-2.5 px-4 pr-8 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-75 disabled:cursor-not-allowed"
+                    onChange={(e) => setManagerQuality(e.target.value)}
+                    disabled={!isManagerView}
+                  >
                     <option value="">Chọn mức độ...</option>
                     <option value="excellent">Xuất sắc - Bàn giao đầy đủ</option>
                     <option value="good">Tốt - Cần bổ sung vài chi tiết nhỏ</option>
@@ -400,24 +449,61 @@ export default function HandoverRecord({ user, handoverId }: HandoverRecordProps
                 <textarea
                   value={managerComment}
                   onChange={(e) => setManagerComment(e.target.value)}
-                  className="w-full min-h-[120px] p-3 text-sm text-slate-700 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-400"
+                  className="w-full min-h-[120px] p-3 text-sm text-slate-700 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-400 disabled:opacity-75 disabled:cursor-not-allowed"
                   placeholder="Nhập nhận xét hoặc các điểm cần nhân sự làm rõ thêm..."
+                  disabled={!isManagerView}
                 />
               </div>
+            </div>
 
               {/* Manager Action Buttons */}
               <div className="pt-2 border-t border-slate-100 space-y-3">
                 {handover.status === 'SUBMITTED' && isManagerView ? (
-                  <button onClick={handleApprove} className="w-full flex items-center justify-center px-4 py-2.5 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium text-sm shadow-sm">
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    Phê duyệt & Chấp nhận
-                  </button>
+                  <>
+                    {user?.role === 'Super Admin' && (
+                      <button onClick={handleAdminSave} className="w-full flex items-center justify-center px-4 py-2.5 text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors font-medium text-sm shadow-sm">
+                        <Save className="w-4 h-4 mr-2" />
+                        Lưu nội dung chỉnh sửa
+                      </button>
+                    )}
+                    <button onClick={handleReject} className="w-full flex items-center justify-center px-4 py-2.5 text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors font-medium text-sm shadow-sm border border-slate-200">
+                      <Save className="w-4 h-4 mr-2" />
+                      Lưu đánh giá & Yêu cầu làm lại
+                    </button>
+                    <button onClick={handleApprove} className="w-full flex items-center justify-center px-4 py-2.5 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium text-sm shadow-sm">
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      Phê duyệt & Chấp nhận
+                    </button>
+                  </>
                 ) : handover.status === 'APPROVED' ? (
-                  <button disabled className="w-full flex items-center justify-center px-4 py-2.5 text-slate-500 bg-slate-100 border border-slate-300 rounded-lg cursor-not-allowed font-medium text-sm shadow-sm">
-                    <Lock className="w-4 h-4 mr-2" />
-                    Đã Khóa biên bản
-                  </button>
+                  <>
+                    <button disabled className="w-full flex items-center justify-center px-4 py-2.5 text-slate-500 bg-slate-100 border border-slate-300 rounded-lg cursor-not-allowed font-medium text-sm shadow-sm">
+                      <Lock className="w-4 h-4 mr-2" />
+                      Đã Khóa biên bản
+                    </button>
+                    {user?.role === 'Super Admin' && (
+                      <button onClick={handleReset} className="w-full flex items-center justify-center px-4 py-2.5 text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-lg transition-colors font-medium text-sm shadow-sm">
+                        Yêu cầu làm lại / Mở khóa
+                      </button>
+                    )}
+                  </>
                 ) : null}
+
+                {/* Employee Action Buttons */}
+                {user?.role === 'Employee' && handover.status !== 'APPROVED' && (
+                  <>
+                    <button onClick={handleSaveDraft} className="w-full flex items-center justify-center px-4 py-2.5 text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm">
+                      <Save className="w-4 h-4 mr-2" />
+                      {handover.status === 'DRAFT' ? 'Lưu nháp' : 'Lưu chỉnh sửa'}
+                    </button>
+                    {handover.status === 'DRAFT' && (
+                      <button onClick={handleSubmit} className="w-full flex items-center justify-center px-4 py-2.5 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm">
+                        <Send className="w-4 h-4 mr-2" />
+                        Gửi quản lý duyệt
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
               
             </div>

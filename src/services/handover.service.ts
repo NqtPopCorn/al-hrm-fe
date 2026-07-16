@@ -11,6 +11,7 @@ export interface HandoverSection {
 export interface ManagerReview {
   rating: number;
   comment: string;
+  quality?: string;
 }
 
 export interface HandoverRecord {
@@ -20,6 +21,11 @@ export interface HandoverRecord {
   departmentId?: { name: string; _id: string };
   targetManagerId?: { fullName: string; _id: string };
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED';
+  employeeSnapshot?: {
+    employeeId: string;
+    employeeCode: string;
+    employeeName: string;
+  };
   sections: HandoverSection;
   managerReview: ManagerReview;
   approvedAt?: string;
@@ -55,6 +61,10 @@ export const submitHandover = async (id: string): Promise<HandoverRecord> => {
 
 export const approveHandover = async (id: string, review: ManagerReview): Promise<HandoverRecord> => {
   return await api.post(`/handovers/${id}/approve`, review);
+};
+
+export const rejectHandover = async (id: string, review: ManagerReview): Promise<HandoverRecord> => {
+  return await api.post(`/handovers/${id}/reject`, review);
 };
 
 export const resetHandover = async (id: string): Promise<HandoverRecord> => {
