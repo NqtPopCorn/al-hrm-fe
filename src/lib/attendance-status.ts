@@ -7,32 +7,32 @@ type AttendanceStatusMeta = {
 
 const statusReasonMetaByCode: Record<string, AttendanceStatusMeta> = {
   ATTENDANCE_VALID: {
-    label: 'Hop le',
-    detail: 'Check-in va check-out nam trong ca lam viec da cau hinh.',
+    label: 'Hợp lệ',
+    detail: 'Check-in va check-out nằm trong ca làm việc đã cấu hình.',
   },
   CHECK_OUT_PENDING: {
-    label: 'Chua check-out',
-    detail: 'Ban ghi nay da check-in nhung chua co check-out cho ngay lam viec.',
+    label: 'Chưa check-out',
+    detail: 'Ban ghi này đã check-in nhưng chưa có check-out cho ngày làm việc.',
   },
   CHECK_IN_LATE: {
-    label: 'Di tre',
-    detail: 'Gio check-in muon hon gio bat dau ca lam viec.',
+    label: 'Đi muộn',
+    detail: 'Giờ check-in muộn hơn giờ bắt đầu ca làm việc.',
   },
   CHECK_OUT_EARLY: {
-    label: 'Ve som',
-    detail: 'Gio check-out som hon gio ket thuc ca lam viec.',
+    label: 'Về sớm',
+    detail: 'Giờ check-out sớm hơn giờ kết thúc ca làm việc.',
   },
   SHIFT_NOT_CONFIGURED: {
-    label: 'Khong hop le',
-    detail: 'Khong tim thay ca lam viec ap dung cho nhan vien hoac phong ban nay.',
+    label: 'Không hợp lệ',
+    detail: 'Không tìm thấy ca làm việc áp dụng cho nhân viên hoặc phòng ban này.',
   },
   ATTENDANCE_INVALID: {
-    label: 'Khong hop le',
-    detail: 'Ban ghi attendance khong the duoc xac thuc theo cau hinh ca lam viec hien tai.',
+    label: 'Không hợp lệ',
+    detail: 'Ban ghi attendance không thể được xác thực theo cấu hình ca làm việc hiện tại.',
   },
   MANUAL_ADJUSTMENT: {
-    label: 'Da dieu chinh',
-    detail: 'Ban ghi nay da duoc dieu chinh thu cong boi nguoi duyet.',
+    label: 'Đã điều chỉnh',
+    detail: 'Ban ghi này đã được điều chỉnh thủ công bởi người duyệt.',
   },
 };
 
@@ -68,3 +68,40 @@ export function getAttendanceStatusMeta(
 
   return meta;
 }
+
+export function getCheckInStatus(
+  checkInAt?: string | null,
+  startTime: string = '08:00',
+): 'VALID' | 'LATE' | 'NONE' {
+  if (!checkInAt) return 'NONE';
+  const date = new Date(checkInAt);
+  if (Number.isNaN(date.getTime())) return 'NONE';
+
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const checkInMinutes = hours * 60 + minutes;
+
+  const [shiftHours, shiftMinutes] = startTime.split(':').map(Number);
+  const shiftStartMinutes = shiftHours * 60 + shiftMinutes;
+
+  return checkInMinutes <= shiftStartMinutes ? 'VALID' : 'LATE';
+}
+
+export function getCheckOutStatus(
+  checkOutAt?: string | null,
+  endTime: string = '17:00',
+): 'VALID' | 'EARLY' | 'NONE' {
+  if (!checkOutAt) return 'NONE';
+  const date = new Date(checkOutAt);
+  if (Number.isNaN(date.getTime())) return 'NONE';
+
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const checkOutMinutes = hours * 60 + minutes;
+
+  const [shiftHours, shiftMinutes] = endTime.split(':').map(Number);
+  const shiftEndMinutes = shiftHours * 60 + shiftMinutes;
+
+  return checkOutMinutes >= shiftEndMinutes ? 'VALID' : 'EARLY';
+}
+

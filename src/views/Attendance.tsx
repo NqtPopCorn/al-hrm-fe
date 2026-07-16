@@ -1,21 +1,32 @@
-import { useState } from 'react';
-import { AlertCircle, CheckCircle, Edit3, Eye, FileText, MapPin } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle, Edit3, Eye, FileText, LayoutDashboard, MapPin } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 import Modal from '../components/Modal';
-import { getAttendanceStatusMeta } from '../lib/attendance-status';
 import { useAttendance } from '../hooks/useAttendance';
 import { useDepartments } from '../hooks/useDepartments';
-import { useDailyReports } from '../hooks/useDailyReports';
 import { useEmployees } from '../hooks/useEmployees';
+import {
+  getAttendanceStatusMeta,
+  getCheckInStatus,
+  getCheckOutStatus,
+} from '../lib/attendance-status';
+import {
+  filterAndPaginateAdjustmentRequests,
+  filterAndPaginateAttendanceRecords,
+  filterAndPaginateReports,
+  getEmployeeOptions,
+  getEmployeeSummary,
+} from './attendance-view-model';
 import {
   AttendanceAdjustmentRequest,
   AttendanceRecord,
-  Department,
-  DailyReport,
-  Employee,
   User,
   WorkMode,
 } from '../types';
+import AdminAttendanceDashboard from './AdminAttendanceDashboard';
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 function getCurrentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -57,80 +68,28 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function normalizeSearchText(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function getDepartmentName(
-  departments: Department[],
-  departmentId?: string | null,
-) {
-  if (!departmentId) {
-    return 'No department';
-  }
-
-  return (
-    departments.find(department => department.id === departmentId)?.name ??
-    'No department'
-  );
-}
-
-function getEmployeeSummary(
-  employeeId: string,
-  employees: Employee[],
-  departments: Department[],
-  snapshot?: DailyReport['employeeSnapshot'],
-) {
-  if (snapshot) {
-    return {
-      title: snapshot.employeeName,
-      subtitle: snapshot.employeeCode,
-      departmentId: null as string | null,
-      searchText:
-        `${snapshot.employeeName} ${snapshot.employeeCode}`.toLowerCase(),
-    };
-  }
-
-  const employee = employees.find(item => item.id === employeeId);
-
-  if (!employee) {
-    return {
-      title: employeeId,
-      subtitle: 'Unknown employee',
-      departmentId: null as string | null,
-      searchText: employeeId.toLowerCase(),
-    };
-  }
-
-  const departmentName = getDepartmentName(departments, employee.departmentId);
-
-  return {
-    title: employee.name,
-    subtitle: `${departmentName} - ${employee.code}`,
-    departmentId: employee.departmentId,
-    searchText: `${employee.name} ${employee.code} ${departmentName}`.toLowerCase(),
-  };
-}
-
 export default function Attendance({ user }: { user: User }) {
-  const month = getCurrentMonth();
+  const { showToast } = useToast();
+  const currentMonth = getCurrentMonth();
   const isSuperAdmin = user.role === 'Super Admin';
-  const [viewMode, setViewMode] = useState<'company' | 'requests' | 'reports'>('company');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'company' | 'requests'>('dashboard');
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
   const [selectedRequest, setSelectedRequest] =
     useState<AttendanceAdjustmentRequest | null>(null);
-  const [viewingReport, setViewingReport] = useState<DailyReport | null>(null);
+
   const [adjustReason, setAdjustReason] = useState('');
   const [adjustCheckIn, setAdjustCheckIn] = useState('');
   const [adjustCheckOut, setAdjustCheckOut] = useState('');
   const [adjustWorkMode, setAdjustWorkMode] = useState<WorkMode>('OFFICE');
   const [reviewNote, setReviewNote] = useState('');
   const [pageActionError, setPageActionError] = useState<string | null>(null);
-  const [reportSearch, setReportSearch] = useState('');
-  const [reportDepartmentId, setReportDepartmentId] = useState('');
-  const [reportMonth, setReportMonth] = useState(month);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const {
     employees,
@@ -148,7 +107,14 @@ export default function Attendance({ user }: { user: User }) {
   } = useDepartments({
     enabled: isSuperAdmin,
   });
-  const employeeIds = employees.map(employee => employee.id);
+
+  const employeeOptions = getEmployeeOptions(employees, {
+    departmentId: selectedDepartmentId,
+  });
+  const employeeIds =
+    selectedEmployeeId.length > 0
+      ? [selectedEmployeeId]
+      : employeeOptions.map(employee => employee.id);
 
   const {
     records,
@@ -162,53 +128,63 @@ export default function Attendance({ user }: { user: User }) {
     isAdjusting,
     isApprovingAdjustmentRequest,
   } = useAttendance({
-    month,
+    month: selectedMonth,
     employeeIds,
     enabled: isSuperAdmin && employeeIds.length > 0,
     includeAdjustmentRequests: isSuperAdmin,
+    adjustmentFilters:
+      selectedEmployeeId.length > 0
+        ? { employeeId: selectedEmployeeId }
+        : undefined,
   });
-  const {
-    reports,
-    isLoading: isReportsLoading,
-    error: reportsError,
-  } = useDailyReports({
-    scope: 'all',
-    enabled: isSuperAdmin,
-  });
-
   const pageError =
     employeesError ||
     departmentsError ||
     attendanceError ||
-    adjustmentRequestsError ||
-    reportsError;
+    adjustmentRequestsError;
   const isLoading =
     isEmployeesLoading ||
     isDepartmentsLoading ||
     isAttendanceLoading ||
-    isAdjustmentRequestsLoading ||
-    isReportsLoading;
-  const normalizedReportSearch = normalizeSearchText(reportSearch);
-  const filteredReports = reports.filter(report => {
-    const employeeSummary = getEmployeeSummary(
-      report.employeeId,
-      employees,
-      departments,
-      report.employeeSnapshot,
-    );
-    const monthMatches =
-      reportMonth.length === 0 ? true : report.date.startsWith(reportMonth);
-    const departmentMatches =
-      reportDepartmentId.length === 0
-        ? true
-        : employeeSummary.departmentId === reportDepartmentId;
-    const searchMatches =
-      normalizedReportSearch.length === 0
-        ? true
-        : employeeSummary.searchText.includes(normalizedReportSearch);
-
-    return monthMatches && departmentMatches && searchMatches;
+    isAdjustmentRequestsLoading;
+  const sharedFilters = {
+    month: selectedMonth,
+    departmentId: selectedDepartmentId,
+    employeeId: selectedEmployeeId,
+  };
+  const paginatedRecords = filterAndPaginateAttendanceRecords({
+    records,
+    employees,
+    departments,
+    filters: sharedFilters,
+    page,
+    pageSize,
   });
+  const paginatedRequests = filterAndPaginateAdjustmentRequests({
+    requests: adjustmentRequests,
+    employees,
+    departments,
+    filters: sharedFilters,
+    page,
+    pageSize,
+  });
+  const activePagination =
+    viewMode === 'company'
+      ? paginatedRecords
+      : paginatedRequests;
+
+  useEffect(() => {
+    setPage(1);
+  }, [viewMode, selectedMonth, selectedDepartmentId, selectedEmployeeId, pageSize]);
+
+  useEffect(() => {
+    if (
+      selectedEmployeeId.length > 0 &&
+      !employeeOptions.some(employee => employee.id === selectedEmployeeId)
+    ) {
+      setSelectedEmployeeId('');
+    }
+  }, [employeeOptions, selectedEmployeeId]);
 
   const openAdjustModal = (record: AttendanceRecord) => {
     setSelectedRecord(record);
@@ -255,16 +231,15 @@ export default function Attendance({ user }: { user: User }) {
         publicIp: 'admin-console',
       });
       setIsAdjustModalOpen(false);
+      showToast({ type: 'success', message: `Đã điều chỉnh chấm công ngày ${selectedRecord.date} thành công.` });
     } catch (error) {
-      setPageActionError(
-        getErrorMessage(error, 'Unable to manually adjust attendance.'),
-      );
+      const msg = getErrorMessage(error, 'Unable đến manually adjust attendance.');
+      setPageActionError(msg);
+      showToast({ type: 'error', message: msg });
     }
   };
 
-  const handleReviewRequest = async (
-    decision: 'APPROVED' | 'REJECTED',
-  ) => {
+  const handleReviewRequest = async (decision: 'APPROVED' | 'REJECTED') => {
     if (!selectedRequest) {
       return;
     }
@@ -276,10 +251,15 @@ export default function Attendance({ user }: { user: User }) {
         reviewNote: reviewNote.trim() || undefined,
       });
       setIsApproveModalOpen(false);
+      if (decision === 'APPROVED') {
+        showToast({ type: 'success', message: 'Đã phê duyệt yêu cầu điều chỉnh chấm công.' });
+      } else {
+        showToast({ type: 'info', message: 'Đã từ chối yêu cầu điều chỉnh chấm công.' });
+      }
     } catch (error) {
-      setPageActionError(
-        getErrorMessage(error, 'Unable to review adjustment request.'),
-      );
+      const msg = getErrorMessage(error, 'Unable đến review adjustment request.');
+      setPageActionError(msg);
+      showToast({ type: 'error', message: msg });
     }
   };
 
@@ -294,10 +274,10 @@ export default function Attendance({ user }: { user: User }) {
         <div className="p-6 bg-slate-50/40">
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
             <p className="text-sm font-medium text-amber-900">
-              Live company attendance review is still limited to Super Admin
+              Tính năng xem chấm công công ty hiện tại chỉ dành cho Super Admin
             </p>
             <p className="mt-2 text-sm text-amber-800">
-              Frontend task 5 now uses live APIs, but backend review scopes for HR Admin and Manager have not been expanded yet.
+              Frontend task 5 đã sử dụng APIs thật, nhưng quyền trên backend cho HR Admin và Manager chưa được mở rộng.
             </p>
           </div>
         </div>
@@ -312,13 +292,24 @@ export default function Attendance({ user }: { user: User }) {
           <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
             <div>
               <h3 className="font-semibold text-sm">Quản lý chấm công công ty</h3>
-              <p className="mt-1 text-xs text-slate-500">Month: {month}</p>
+              <p className="mt-1 text-xs text-slate-500">Tháng: {selectedMonth}</p>
               {pageError ? (
                 <p className="mt-1 text-xs text-rose-600">{pageError}</p>
               ) : null}
             </div>
 
             <div className="flex bg-slate-100 p-1 rounded-md">
+              <button
+                onClick={() => setViewMode('dashboard')}
+                className={`px-3 py-1.5 text-xs font-medium rounded flex items-center ${
+                  viewMode === 'dashboard'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5 mr-1" />
+                Dashboard
+              </button>
               <button
                 onClick={() => setViewMode('company')}
                 className={`px-3 py-1.5 text-xs font-medium rounded ${
@@ -339,115 +330,73 @@ export default function Attendance({ user }: { user: User }) {
               >
                 Yêu cầu ngoại lệ
               </button>
-              <button
-                onClick={() => setViewMode('reports')}
-                className={`px-3 py-1.5 text-xs font-medium rounded flex items-center ${
-                  viewMode === 'reports'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5 mr-1" />
-                Báo cáo nhân viên
-              </button>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-0">
-            {viewMode === 'reports' ? (
-              <div className="p-6">
-                <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
-                      Tim nhan vien
-                    </label>
-                    <input
-                      type="text"
-                      value={reportSearch}
-                      onChange={event => setReportSearch(event.target.value)}
-                      placeholder="Ten hoac ma nhan vien"
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
-                      Phong ban
-                    </label>
-                    <select
-                      value={reportDepartmentId}
-                      onChange={event => setReportDepartmentId(event.target.value)}
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    >
-                      <option value="">Tat ca phong ban</option>
-                      {departments.map(department => (
-                        <option key={department.id} value={department.id}>
-                          {department.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
-                      Thang bao cao
-                    </label>
-                    <input
-                      type="month"
-                      value={reportMonth}
-                      onChange={event => setReportMonth(event.target.value)}
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    />
-                  </div>
-                </div>
-                {isLoading && reports.length === 0 ? (
-                  <p className="text-sm text-slate-500">Đang tải dữ liệu...</p>
-                ) : null}
-                <div className="space-y-4">
-                  {filteredReports.map(report => {
-                    const employeeSummary = getEmployeeSummary(
-                      report.employeeId,
-                      employees,
-                      departments,
-                    );
 
-                    return (
-                    <div
-                      key={report.id}
-                      className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <h4 className="font-semibold text-slate-800">
-                            {employeeSummary.title}
-                          </h4>
-                          <p className="mt-1 text-xs font-medium text-slate-500">
-                            {employeeSummary.subtitle}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Báo cáo ngày {report.date} - Lần sửa cuối:{' '}
-                            {new Date(report.updatedAt).toLocaleString()}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setViewingReport(report)}
-                          className="text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center text-xs font-medium bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded"
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          Xem chi tiết
-                        </button>
-                      </div>
-                      <div
-                        className="prose prose-sm prose-slate max-w-none text-slate-600 line-clamp-3 bg-slate-50 p-3 rounded border border-slate-100"
-                        dangerouslySetInnerHTML={{ __html: report.content }}
-                      />
-                    </div>
-                  );
-                  })}
-                  {!isLoading && filteredReports.length === 0 ? (
-                    <div className="text-center py-12 text-slate-500">
-                      <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                      <p>Chưa có báo cáo nào</p>
-                    </div>
-                  ) : null}
+          {viewMode !== 'dashboard' ? (
+            <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
+                    Tháng
+                  </label>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={event => setSelectedMonth(event.target.value)}
+                    className="w-full rounded-md border border-blue-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
                 </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
+                    Phòng ban
+                  </label>
+                  <select
+                    value={selectedDepartmentId}
+                    onChange={event => setSelectedDepartmentId(event.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="">Tất cả phòng ban</option>
+                    {departments.map(department => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-slate-500">
+                    Nhân viên
+                  </label>
+                  <select
+                    value={selectedEmployeeId}
+                    onChange={event => setSelectedEmployeeId(event.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="">Tất cả nhân viên</option>
+                    {employeeOptions.map(employee => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.name} - {employee.code}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <p>Shared filters apply đến all tabs. Sắp xếp mặc định: mới nhất đến cũ nhất.</p>
+                <p>
+                  {viewMode === 'company'
+                    ? 'Danh sách chấm công'
+                    : 'Yêu cầu ngoại lệ'}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex-1 overflow-auto p-0">
+            {viewMode === 'dashboard' ? (
+              <div className="p-5">
+                <AdminAttendanceDashboard user={user} />
               </div>
             ) : viewMode === 'requests' ? (
               <table className="w-full text-left">
@@ -461,7 +410,7 @@ export default function Attendance({ user }: { user: User }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {adjustmentRequests.map(request => (
+                  {paginatedRequests.items.map(request => (
                     <tr key={request.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 text-sm font-medium text-slate-900">
                         {getEmployeeSummary(request.employeeId, employees, departments).title}
@@ -490,10 +439,10 @@ export default function Attendance({ user }: { user: User }) {
                       </td>
                     </tr>
                   ))}
-                  {!isLoading && adjustmentRequests.length === 0 ? (
+                  {!isLoading && paginatedRequests.totalItems === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
-                        Chưa có adjustment request nào.
+                        Chưa có yêu cầu ngoại lệ nào.
                       </td>
                     </tr>
                   ) : null}
@@ -513,61 +462,142 @@ export default function Attendance({ user }: { user: User }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {records.map(record => {
+                  {paginatedRecords.items.map(record => {
                     const statusMeta = getAttendanceStatusMeta(record);
+
                     return (
-                    <tr key={record.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                        {getEmployeeSummary(record.employeeId, employees, departments).title}
-                      </td>
-                      <td className="px-6 py-4 text-sm font-medium">{record.date}</td>
-                      <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</td>
-                      <td className="px-6 py-4 text-sm font-mono text-slate-600">{record.checkOut || '--:--'}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center text-sm text-slate-600">
-                          <MapPin className="w-4 h-4 mr-1 text-slate-400" />
-                          {record.type}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="space-y-1">
-                          <span
-                            className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${getStatusBadgeClasses(record.status)}`}
-                          >
-                            {record.status === 'VALID' ? (
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                            ) : (
-                              <AlertCircle className="w-3 h-3 mr-1" />
+                      <tr key={record.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                          {getEmployeeSummary(record.employeeId, employees, departments).title}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium">{record.date}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-mono text-slate-600">{record.checkIn || '--:--'}</span>
+                            {record.checkInAt && (
+                              <span className={`text-[10px] font-semibold mt-0.5 ${
+                                getCheckInStatus(record.checkInAt, '08:00') === 'VALID'
+                                  ? 'text-green-600'
+                                  : 'text-amber-600'
+                              }`}>
+                                {getCheckInStatus(record.checkInAt, '08:00') === 'VALID'
+                                  ? 'Đúng giờ'
+                                  : 'Đi muộn'}
+                              </span>
                             )}
-                            {statusMeta.label}
-                          </span>
-                          <p className="max-w-[14rem] text-xs text-slate-500">
-                            {statusMeta.detail}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => openAdjustModal(record)}
-                          className="text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center text-xs font-medium"
-                        >
-                          <Edit3 className="w-3 h-3 mr-1" />
-                          Điều chỉnh
-                        </button>
-                      </td>
-                    </tr>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-mono text-slate-600">{record.checkOut || '--:--'}</span>
+                            {record.checkOutAt ? (
+                              <span className={`text-[10px] font-semibold mt-0.5 ${
+                                getCheckOutStatus(record.checkOutAt, '17:00') === 'VALID'
+                                  ? 'text-green-600'
+                                  : 'text-amber-600'
+                              }`}>
+                                {getCheckOutStatus(record.checkOutAt, '17:00') === 'VALID'
+                                  ? 'Hợp lệ'
+                                  : 'Về sớm'}
+                              </span>
+                            ) : record.checkInAt ? (
+                              <span className="text-[10px] text-slate-400 mt-0.5">Chưa check-out</span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center text-sm text-slate-600">
+                            <MapPin className="w-4 h-4 mr-1 text-slate-400" />
+                            {record.type}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${getStatusBadgeClasses(record.status)}`}
+                            >
+                              {record.status === 'VALID' ? (
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                              ) : (
+                                <AlertCircle className="w-3 h-3 mr-1" />
+                              )}
+                              {statusMeta.label}
+                            </span>
+                            <p className="max-w-[14rem] text-xs text-slate-500">
+                              {statusMeta.detail}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => openAdjustModal(record)}
+                            className="text-blue-600 hover:text-blue-800 transition-colors inline-flex items-center text-xs font-medium"
+                          >
+                            <Edit3 className="w-3 h-3 mr-1" />
+                            Điều chỉnh
+                          </button>
+                        </td>
+                      </tr>
                     );
                   })}
-                  {!isLoading && records.length === 0 ? (
+                  {!isLoading && paginatedRecords.totalItems === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
-                        Chưa có dữ liệu attendance công ty cho tháng này.
+                        Chưa có dữ liệu chấm công công ty cho tháng này.
                       </td>
                     </tr>
                   ) : null}
                 </tbody>
               </table>
             )}
+          </div>
+
+          <div className="border-t border-slate-100 bg-white px-5 py-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p className="text-sm text-slate-500">
+                Đang xem {activePagination.rangeStart} đến {activePagination.rangeEnd} của {activePagination.totalItems} mục
+              </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <span>Số dòng mỗi trang</span>
+                  <select
+                    value={pageSize}
+                    onChange={event => setPageSize(Number(event.target.value))}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    {PAGE_SIZE_OPTIONS.map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPage(currentTrang => Math.max(1, currentTrang - 1))}
+                    disabled={activePagination.page === 1}
+                    className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Trang trước
+                  </button>
+                  <span className="text-sm text-slate-500">
+                    Trang {activePagination.page} của {activePagination.totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPage(currentTrang =>
+                        Math.min(activePagination.totalPages, currentTrang + 1),
+                      )}
+                    disabled={activePagination.page >= activePagination.totalPages}
+                    className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Trang sau
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -618,7 +648,7 @@ export default function Attendance({ user }: { user: User }) {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Work mode</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Chế độ làm việc</label>
               <select
                 value={adjustWorkMode}
                 onChange={event => setAdjustWorkMode(event.target.value as WorkMode)}
@@ -685,7 +715,7 @@ export default function Attendance({ user }: { user: User }) {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">Ngày điều chỉnh:</span>
+                <span className="font-medium">Ngày dieu chinh:</span>
                 <span>{selectedRequest.workDate}</span>
               </div>
               <div className="flex justify-between">
@@ -712,7 +742,7 @@ export default function Attendance({ user }: { user: User }) {
                   <span className="font-bold">{selectedRequest.status}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-medium">Reviewed at:</span>
+                  <span className="font-medium">Thời gian duyệt:</span>
                   <span>{selectedRequest.reviewedAt ? new Date(selectedRequest.reviewedAt).toLocaleString() : '--'}</span>
                 </div>
                 {selectedRequest.reviewNote ? (
@@ -758,37 +788,6 @@ export default function Attendance({ user }: { user: User }) {
         ) : null}
       </Modal>
 
-      <Modal
-        isOpen={!!viewingReport}
-        onClose={() => setViewingReport(null)}
-        title="Chi tiết báo cáo"
-        maxWidth="max-w-4xl"
-      >
-        {viewingReport ? (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center text-sm text-slate-500 mb-2">
-              <span>
-                Bởi:{' '}
-                <span className="font-medium text-slate-800">
-                  {
-                    getEmployeeSummary(
-                      viewingReport.employeeId,
-                      employees,
-                      departments,
-                    ).title
-                  }
-                </span>
-              </span>
-              <span>Ngày: {viewingReport.date}</span>
-            </div>
-
-            <div
-              className="prose prose-sm prose-slate max-w-none text-slate-700 bg-slate-50 p-4 rounded-lg border border-slate-100"
-              dangerouslySetInnerHTML={{ __html: viewingReport.content }}
-            />
-          </div>
-        ) : null}
-      </Modal>
     </div>
   );
 }

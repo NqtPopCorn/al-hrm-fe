@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {
   Users,
   LayoutDashboard,
@@ -8,19 +9,25 @@ import {
   Settings,
   LogOut,
   Building2,
+  Shield,
+  SendToBack,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Role } from '../types';
 
 export type AppTab =
   | 'dashboard'
+  | 'accounts'
   | 'employees'
   | 'departments'
   | 'checkin'
   | 'attendance'
+  | 'daily_reports'
   | 'payroll'
   | 'recruitment'
   | 'documents'
+  | 'projects'
+  | 'handover_record'
   | 'settings';
 
 type NavItem = {
@@ -33,7 +40,6 @@ type NavItem = {
 
 interface SidebarProps {
   currentTab: AppTab;
-  setCurrentTab: (tab: AppTab) => void;
   role: Role;
   onLogout: () => Promise<void> | void;
 }
@@ -44,6 +50,12 @@ const navItems: NavItem[] = [
     label: 'Tổng quan',
     icon: LayoutDashboard,
     roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
+  },
+  {
+    id: 'accounts',
+    label: 'Tài khoản',
+    icon: Shield,
+    roles: ['Super Admin'],
   },
   {
     id: 'employees',
@@ -70,6 +82,12 @@ const navItems: NavItem[] = [
     roles: ['Super Admin', 'HR Admin', 'Manager'],
   },
   {
+    id: 'daily_reports',
+    label: 'Quản lý báo cáo cuối ngày',
+    icon: FileText,
+    roles: ['Super Admin', 'HR Admin', 'Manager'],
+  },
+  {
     id: 'payroll',
     label: 'Lương',
     icon: DollarSign,
@@ -87,7 +105,18 @@ const navItems: NavItem[] = [
     label: 'Tài liệu',
     icon: FileText,
     roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
-    hiddenFromMainNav: true,
+  },
+  {
+    id: 'projects',
+    label: 'Dự án',
+    icon: Briefcase,
+    roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
+  },
+  {
+    id: 'handover_record',
+    label: 'Bàn giao',
+    icon: SendToBack,
+    roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
   },
   {
     id: 'settings',
@@ -113,7 +142,6 @@ export function getDefaultTabForRole(role: Role): AppTab {
 
 export default function Sidebar({
   currentTab,
-  setCurrentTab,
   role,
   onLogout,
 }: SidebarProps) {
@@ -138,9 +166,9 @@ export default function Sidebar({
           const Icon = item.icon;
           const isActive = currentTab === item.id;
           return (
-            <button
+            <Link
               key={item.id}
-              onClick={() => setCurrentTab(item.id)}
+              to={`/${item.id}`}
               className={cn(
                 'w-full flex items-center px-6 py-2.5 transition-colors text-sm',
                 isActive
@@ -155,7 +183,7 @@ export default function Sidebar({
                 )}
               />
               {item.label}
-            </button>
+            </Link>
           );
         })}
       </nav>

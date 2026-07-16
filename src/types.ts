@@ -1,4 +1,9 @@
 export type Role = 'Super Admin' | 'HR Admin' | 'Manager' | 'Employee';
+export type AccountStatus =
+  | 'pending_verification'
+  | 'active'
+  | 'inactive'
+  | 'banned';
 
 export type EmployeeWorkStatus =
   | 'PROBATION'
@@ -39,6 +44,18 @@ export interface User {
   permissions?: string[];
 }
 
+export interface UserAccount {
+  id: string;
+  email: string;
+  fullName: string;
+  phone?: string;
+  role: Role;
+  status: AccountStatus;
+  avatar?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Department {
   id: string;
   name: string;
@@ -55,12 +72,18 @@ export interface Position {
   baseSalary: number;
 }
 
+export interface EmployeeExportReadiness {
+  canExportDefaultSdlcAccount: boolean;
+  reasons: string[];
+}
+
 export interface EmployeeSensitiveInfo {
   employeeId: string;
   baseSalary?: number;
   bankId?: string;
   bankAccountNumber?: string;
   bankAccountName?: string;
+  birthday?: string;
 }
 
 export interface Employee {
@@ -80,6 +103,7 @@ export interface Employee {
   isActive?: boolean;
   disabledAt?: string | null;
   sensitiveInfo?: EmployeeSensitiveInfo;
+  exportReadiness?: EmployeeExportReadiness;
 }
 
 export interface AttendanceRecord {
@@ -91,12 +115,19 @@ export interface AttendanceRecord {
   checkOut: string | null;
   checkInAt?: string | null;
   checkOutAt?: string | null;
-  type: WorkMode;
+  type: WorkMode | null;
   ip?: string;
   location?: string;
   status: AttendanceStatus;
   statusReasonCode?: string | null;
   workdayCoefficient: number;
+  dayUnit?: number;
+  lateMinutes?: number;
+  earlyLeaveMinutes?: number;
+  workingMinutes?: number;
+  standardWorkMinutes?: number;
+  warningMessage?: string;
+  isOutRange?: boolean;
   dailyReportId?: string | null;
   manualAdjustmentReason?: string | null;
 }
@@ -171,6 +202,33 @@ export interface PayrollAttendanceSummary {
   workedDayEquivalent: number;
 }
 
+export interface PayrollSystemEarnings {
+  baseSalaryProrated: number;
+}
+
+export interface PayrollMandatoryInsuranceBreakdown {
+  insuranceBase: number;
+  socialInsurance: number;
+  healthInsurance: number;
+  unemploymentInsurance: number;
+  total: number;
+}
+
+export interface PayrollSystemDeductions {
+  mandatoryInsurance: PayrollMandatoryInsuranceBreakdown;
+  personalIncomeTax: number;
+}
+
+export interface PayrollManualAdjustments {
+  allowance: number;
+  bonus: number;
+  otherDeduction: number;
+  otherDeductionReason?: string | null;
+  note?: string | null;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface PayrollItem {
   id: string;
   periodId: string;
@@ -181,12 +239,17 @@ export interface PayrollItem {
   departmentId?: string | null;
   positionId?: string | null;
   baseSalarySnapshot: number;
+  systemEarnings: PayrollSystemEarnings;
+  systemDeductions: PayrollSystemDeductions;
+  manualAdjustments: PayrollManualAdjustments;
   bankSnapshot: PayrollBankSnapshot;
   attendanceSummary: PayrollAttendanceSummary;
   standardWorkingDays: number;
   grossSalary: number;
+  totalDeductions: number;
   netSalary: number;
   calculatedAt?: string | null;
+  warnings: string[];
 }
 
 export interface PayrollPeriod {
@@ -250,4 +313,65 @@ export interface DailyReport {
   createdAt: string;
   updatedAt: string;
   submittedAt?: string;
+}
+
+export interface ProjectMember {
+  employee_id: string;
+  full_name: string;
+  avatar_url?: string;
+}
+
+export interface ProjectAttachment {
+  file_name: string;
+  file_url: string;
+  file_type: string;
+}
+
+export interface AuditUser {
+  user_id: string;
+  full_name: string;
+}
+
+export interface ProjectSnapshot {
+  content_snapshot: string;
+  modified_by: AuditUser;
+  modified_at: string;
+  change_note?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  content: string;
+  category?: string;
+  technologies: string[];
+  tags: string[];
+  scale?: string;
+  year?: number;
+  members: ProjectMember[];
+  attachments: ProjectAttachment[];
+  created_by: AuditUser;
+  updated_by?: AuditUser;
+  history: ProjectSnapshot[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SystemAuditLog {
+  _id: string;
+  type: string;
+  severity: string;
+  userId?: string;
+  email?: string;
+  ip?: string;
+  userAgent?: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+export interface AuditLogStats {
+  total: number;
+  bySeverity: Record<string, number>;
+  byType: Record<string, number>;
+  recentCount: number;
 }

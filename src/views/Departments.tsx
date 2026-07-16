@@ -1,5 +1,9 @@
-import { FormEvent, useState } from 'react';
-import { Edit2, Plus, Users } from 'lucide-react';
+import { FormEvent, useState, useMemo } from 'react';
+import { 
+  Edit2, Plus, Users, Search, ChevronDown, ChevronRight, 
+  Building2, Briefcase, Ban
+} from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 import Modal from '../components/Modal';
 import { useDepartments } from '../hooks/useDepartments';
@@ -83,14 +87,14 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 function getRoleScopeCopy(userRole: Role) {
   if (userRole === 'HR Admin') {
-    return 'Live department and position management is still limited to Super Admin while backend role scopes are being expanded.';
+    return 'Quản lý phòng ban và vị trí hiện chỉ giới hạn cho Super Admin trong khi phân quyền backend đang được mở rộng.';
   }
 
   if (userRole === 'Manager') {
-    return 'Department data is planned to become team-scoped, but the backend currently exposes this area to Super Admin only.';
+    return 'Dữ liệu phòng ban dự kiến sẽ được phân quyền theo nhóm, nhưng hiện tại backend chỉ cho phép Super Admin truy cập khu vực này.';
   }
 
-  return 'This screen is temporarily limited while role-scoped department endpoints are still being added.';
+  return 'Màn hình này tạm thời bị giới hạn trong khi các endpoint phân quyền phòng ban đang được bổ sung.';
 }
 
 function formatCurrency(value: number) {
@@ -101,6 +105,7 @@ function formatCurrency(value: number) {
 }
 
 export default function Departments({ userRole }: { userRole: Role }) {
+  const { showToast } = useToast();
   const isSuperAdmin = userRole === 'Super Admin';
   const [isAddDeptModalOpen, setIsAddDeptModalOpen] = useState(false);
   const [isEditDeptModalOpen, setIsEditDeptModalOpen] = useState(false);
@@ -124,6 +129,10 @@ export default function Departments({ userRole }: { userRole: Role }) {
     useState<Department | null>(null);
   const [disableDepartmentError, setDisableDepartmentError] =
     useState<string | null>(null);
+
+  // --- UX/UI State ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
 
   const {
     departments,
@@ -168,6 +177,26 @@ export default function Departments({ userRole }: { userRole: Role }) {
     isSubmitting || isCreatingDepartment || isUpdatingDepartment;
   const isSavingPosition =
     isSubmittingPosition || isCreatingPosition || isUpdatingPosition;
+
+  // --- Derived Data (Search & Filter) ---
+  const filteredDepartments = useMemo(() => {
+    if (!searchQuery.trim()) return departments;
+    const query = searchQuery.toLowerCase();
+    return departments.filter(d => 
+      d.name.toLowerCase().includes(query) || 
+      (d.code && d.code.toLowerCase().includes(query))
+    );
+  }, [departments, searchQuery]);
+
+  // --- Handlers (Toggle Accordion) ---
+  const toggleDeptExpansion = (deptId: string) => {
+    setExpandedDepts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(deptId)) newSet.delete(deptId);
+      else newSet.add(deptId);
+      return newSet;
+    });
+  };
 
   const closeAddDepartmentModal = () => {
     setIsAddDeptModalOpen(false);
@@ -243,8 +272,9 @@ export default function Departments({ userRole }: { userRole: Role }) {
       setFormError(null);
       await createDepartment(toDepartmentPayload(deptForm));
       closeAddDepartmentModal();
+      showToast({ type: 'success', message: `Đã tạo phòng ban “${deptForm.name}” thành công.` });
     } catch (error) {
-      setFormError(getErrorMessage(error, 'Unable to create department.'));
+      setFormError(getErrorMessage(error, 'Không thể tạo phòng ban.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -262,8 +292,9 @@ export default function Departments({ userRole }: { userRole: Role }) {
       setFormError(null);
       await updateDepartment(selectedDept.id, toDepartmentPayload(deptForm));
       closeEditDepartmentModal();
+      showToast({ type: 'success', message: `Đã cập nhật phòng ban “${deptForm.name}” thành công.` });
     } catch (error) {
-      setFormError(getErrorMessage(error, 'Unable to update department.'));
+      setFormError(getErrorMessage(error, 'Không thể cập nhật phòng ban.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -277,8 +308,9 @@ export default function Departments({ userRole }: { userRole: Role }) {
       setPositionFormError(null);
       await createPosition(toPositionPayload(positionForm));
       closeAddPositionModal();
+      showToast({ type: 'success', message: `Đã tạo vị trí “${positionForm.title}” thành công.` });
     } catch (error) {
-      setPositionFormError(getErrorMessage(error, 'Unable to create position.'));
+      setPositionFormError(getErrorMessage(error, 'Không thể tạo vị trí.'));
     } finally {
       setIsSubmittingPosition(false);
     }
@@ -296,8 +328,9 @@ export default function Departments({ userRole }: { userRole: Role }) {
       setPositionFormError(null);
       await updatePosition(selectedPosition.id, toPositionPayload(positionForm));
       closeEditPositionModal();
+      showToast({ type: 'success', message: `Đã cập nhật vị trí “${positionForm.title}” thành công.` });
     } catch (error) {
-      setPositionFormError(getErrorMessage(error, 'Unable to update position.'));
+      setPositionFormError(getErrorMessage(error, 'Không thể cập nhật vị trí.'));
     } finally {
       setIsSubmittingPosition(false);
     }
@@ -308,14 +341,16 @@ export default function Departments({ userRole }: { userRole: Role }) {
       return;
     }
 
+    const deptName = departmentPendingDisable.name;
     try {
       setDisableDepartmentError(null);
       await disableDepartment(departmentPendingDisable.id);
       setDepartmentPendingDisable(null);
+      showToast({ type: 'success', message: `Đã vô hiệu hóa phòng ban “${deptName}”.` });
     } catch (error) {
-      setDisableDepartmentError(
-        getErrorMessage(error, 'Unable to disable department.'),
-      );
+      const msg = getErrorMessage(error, 'Không thể vô hiệu hóa phòng ban.');
+      setDisableDepartmentError(msg);
+      showToast({ type: 'error', message: msg });
     }
   };
 
@@ -323,18 +358,12 @@ export default function Departments({ userRole }: { userRole: Role }) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-800">
-            Departments and positions
-          </h2>
+          <h2 className="text-lg font-semibold text-slate-800">Phòng ban và Vị trí</h2>
         </div>
         <div className="p-6 bg-slate-50/40">
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
-            <p className="text-sm font-medium text-amber-900">
-              Live department data is limited in this sprint
-            </p>
-            <p className="mt-2 text-sm text-amber-800">
-              {getRoleScopeCopy(userRole)}
-            </p>
+            <p className="text-sm font-medium text-amber-900">Dữ liệu phòng ban bị giới hạn trong giai đoạn này</p>
+            <p className="mt-2 text-sm text-amber-800">{getRoleScopeCopy(userRole)}</p>
           </div>
         </div>
       </div>
@@ -342,187 +371,188 @@ export default function Departments({ userRole }: { userRole: Role }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
-      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-800">
-            Departments and positions
-          </h2>
-          {isPageSyncing ? (
-            <p className="mt-1 text-xs font-medium text-blue-600">
-              Syncing latest department data...
+    <div className="bg-slate-50 rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-6rem)]">
+      {/* Header Area */}
+      <div className="px-6 py-5 bg-white border-b border-slate-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <Building2 className="w-6 h-6 text-blue-600" />
+              Phòng ban & Vị trí
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              Quản lý cơ cấu công ty, trưởng phòng và các vị trí công việc cụ thể.
             </p>
-          ) : null}
+            {isPageSyncing && <p className="text-xs font-medium text-blue-600 mt-1 animate-pulse">Đang đồng bộ dữ liệu...</p>}
+          </div>
+          <button
+            onClick={openAddDepartmentModal}
+            className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center transition-all shadow-sm hover:shadow active:scale-95 whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Thêm phòng ban
+          </button>
         </div>
-        <button
-          onClick={openAddDepartmentModal}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 flex items-center transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create department
-        </button>
+
+        {/* Search & Filter Toolbar */}
+        <div className="mt-6 flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Tìm kiếm phòng ban theo tên hoặc mã..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+            />
+          </div>
+          <div className="text-sm text-slate-500 font-medium">
+            Tổng cộng: {filteredDepartments.length} Phòng ban
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 bg-slate-50/50">
-        {pageError ? (
-          <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-auto p-6">
+        {pageError && (
+          <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 flex items-center">
+            <Ban className="w-4 h-4 mr-2" />
             {pageError}
           </div>
-        ) : null}
+        )}
 
         {isPageLoading ? (
-          <div className="rounded-xl border border-slate-200 bg-white px-6 py-16 text-center text-sm text-slate-500">
-            Loading departments...
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-sm text-slate-500 flex flex-col items-center justify-center">
+            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+            Đang tải cơ cấu tổ chức...
           </div>
-        ) : departments.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white px-6 py-16 text-center text-sm text-slate-500">
-            No departments found yet.
+        ) : filteredDepartments.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-sm text-slate-500">
+            {searchQuery ? 'Không có phòng ban nào khớp với tìm kiếm của bạn.' : 'Chưa có phòng ban nào. Hãy tạo mới để bắt đầu.'}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {departments.map(department => {
-              const departmentEmployees = employees.filter(
-                employee => employee.departmentId === department.id,
-              );
-              const departmentPositions = positions.filter(
-                position => position.departmentId === department.id,
-              );
-              const managerName =
-                employees.find(employee => employee.id === department.managerId)
-                  ?.name ?? 'Not assigned';
+          <div className="space-y-3">
+            {filteredDepartments.map(department => {
+              const departmentEmployees = employees.filter(emp => emp.departmentId === department.id);
+              const departmentPositions = positions.filter(pos => pos.departmentId === department.id);
+              const managerName = employees.find(emp => emp.id === department.managerId)?.name ?? 'Chưa phân bổ';
+              const isExpanded = expandedDepts.has(department.id);
+              const isInactive = department.isActive === false;
 
               return (
-                <div
-                  key={department.id}
-                  className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-800">
-                        {department.name}
-                      </h3>
-                      <div className="mt-1 flex items-center gap-2">
-                        <p className="text-xs text-slate-500">
-                          Code: {department.code || 'N/A'}
+                <div key={department.id} className={`bg-white border rounded-xl shadow-sm overflow-hidden transition-colors ${isInactive ? 'border-slate-200 bg-slate-50/50' : 'border-slate-200 hover:border-blue-300'}`}>
+                  {/* Department Row (Clickable) */}
+                  <div 
+                    className="flex flex-col lg:flex-row lg:items-center justify-between p-4 cursor-pointer"
+                    onClick={() => toggleDeptExpansion(department.id)}
+                  >
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className={`p-2 rounded-lg ${isInactive ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 text-blue-600'}`}>
+                        {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className={`text-base font-semibold ${isInactive ? 'text-slate-500 line-through decoration-slate-300' : 'text-slate-900'}`}>
+                            {department.name}
+                          </h3>
+                          {isInactive && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 text-slate-600">Ngừng hoạt động</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-500 flex items-center gap-2 mt-0.5">
+                          <span>Mã: <span className="font-medium text-slate-700">{department.code || 'N/A'}</span></span>
+                          <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                          <span>Quản lý: <span className="font-medium text-slate-700">{managerName}</span></span>
                         </p>
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${department.isActive === false
-                              ? 'bg-slate-100 text-slate-600'
-                              : 'bg-green-100 text-green-700'
-                            }`}
-                        >
-                          {department.isActive === false ? 'Inactive' : 'Active'}
-                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {department.isActive !== false ? (
+
+                    <div className="flex items-center gap-6 mt-4 lg:mt-0 pl-14 lg:pl-0">
+                      <div className="flex items-center gap-4 text-sm">
+                        <div className="flex items-center gap-1.5 text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+                          <Users className="w-4 h-4" />
+                          <span className="font-medium">{departmentEmployees.length}</span> nhân viên
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+                          <Briefcase className="w-4 h-4" />
+                          <span className="font-medium">{departmentPositions.length}</span> vị trí
+                        </div>
+                      </div>
+
+                      {/* Department Actions */}
+                      <div className="flex items-center gap-2 border-l border-slate-200 pl-4" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => openDisableDepartmentModal(department)}
-                          className="text-rose-600 hover:text-rose-700 transition-colors text-xs font-medium"
+                          onClick={() => openEditDepartmentModal(department)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          title="Chỉnh sửa phòng ban"
                         >
-                          Disable
+                          <Edit2 className="w-4 h-4" />
                         </button>
-                      ) : (
-                        <span className="text-xs font-medium text-slate-400">
-                          Disabled
-                        </span>
-                      )}
-                      <button
-                        onClick={() => openEditDepartmentModal(department)}
-                        className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
-                        title="Edit department"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
+                        {!isInactive && (
+                          <button
+                            onClick={() => openDisableDepartmentModal(department)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                            title="Vô hiệu hóa phòng ban"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                        Team size
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900 flex items-center">
-                        <Users className="w-4 h-4 mr-2 text-slate-400" />
-                        {departmentEmployees.length}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                        Manager
-                      </p>
-                      <p className="mt-2 text-sm font-semibold text-slate-900">
-                        {managerName}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                          Positions
+                  {/* Expanded Positions Area */}
+                  {isExpanded && (
+                    <div className="border-t border-slate-100 bg-slate-50/50 p-4 pl-14">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                          Vị trí công việc tại {department.name}
                         </h4>
                         <button
                           onClick={() => openAddPositionModal(department.id)}
-                          disabled={department.isActive === false}
-                          className="text-blue-600 hover:text-blue-800 transition-colors text-xs font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={isInactive}
+                          className="text-blue-600 hover:text-blue-800 transition-colors text-sm font-medium flex items-center disabled:opacity-50 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-md"
                         >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Add position
+                          <Plus className="w-4 h-4 mr-1" />
+                          Thêm vị trí
                         </button>
                       </div>
-                      {department.isActive === false ? (
-                        <p className="text-xs text-slate-400">
-                          This department is inactive. New positions cannot be added.
-                        </p>
-                      ) : null}
+
+                      {departmentPositions.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
+                          Chưa có vị trí nào được thiết lập cho phòng ban này.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                          {departmentPositions.map(position => {
+                            const assigneeCount = employees.filter(emp => emp.positionId === position.id).length;
+                            return (
+                              <div key={position.id} className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-colors">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-medium text-slate-800 truncate" title={position.title}>{position.title}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Lương: <span className="font-medium text-slate-700">{formatCurrency(position.baseSalary)}</span></p>
+                                  </div>
+                                  <button
+                                    onClick={() => openEditPositionModal(position)}
+                                    className="text-slate-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition-colors"
+                                    title="Chỉnh sửa vị trí"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${assigneeCount === 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                    {assigneeCount} Đã phân bổ
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-
-                    {departmentPositions.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-sm text-slate-500">
-                        No positions in this department yet.
-                      </div>
-                    ) : (
-                      departmentPositions.map(position => {
-                        const assigneeCount = employees.filter(
-                          employee => employee.positionId === position.id,
-                        ).length;
-
-                        return (
-                          <div
-                            key={position.id}
-                            className="rounded-lg border border-slate-200 px-3 py-3"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-medium text-slate-800">
-                                  {position.title}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  Base salary: {formatCurrency(position.baseSalary)}
-                                </p>
-                              </div>
-                              <div className="flex items-start gap-2">
-                                <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
-                                  {assigneeCount} assigned
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => openEditPositionModal(position)}
-                                  className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
-                                  title="Edit position"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -533,7 +563,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
       <Modal
         isOpen={isAddDeptModalOpen}
         onClose={closeAddDepartmentModal}
-        title="Create department"
+        title="Tạo phòng ban"
       >
         <form className="space-y-4" onSubmit={handleCreateDepartment}>
           {formError ? (
@@ -544,7 +574,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
 
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
-              Department name
+              Tên phòng ban
             </label>
             <input
               required
@@ -561,7 +591,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
-              Department code
+              Mã phòng ban
             </label>
             <input
               type="text"
@@ -577,7 +607,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
-              Manager
+              Người quản lý
             </label>
             <select
               value={deptForm.managerId}
@@ -589,7 +619,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
               }
               className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
             >
-              <option value="">No manager assigned</option>
+              <option value="">Chưa có người quản lý</option>
               {managerOptions.map(manager => (
                 <option key={manager.id} value={manager.id}>
                   {manager.name}
@@ -604,14 +634,14 @@ export default function Departments({ userRole }: { userRole: Role }) {
               disabled={isSavingDepartment}
               className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
             >
-              Cancel
+              Hủy
             </button>
             <button
               type="submit"
               disabled={isSavingDepartment}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
             >
-              {isSavingDepartment ? 'Saving...' : 'Create department'}
+              {isSavingDepartment ? 'Đang lưu...' : 'Tạo phòng ban'}
             </button>
           </div>
         </form>
@@ -620,7 +650,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
       <Modal
         isOpen={isEditDeptModalOpen}
         onClose={closeEditDepartmentModal}
-        title="Edit department"
+        title="Chỉnh sửa phòng ban"
       >
         {selectedDept ? (
           <form className="space-y-4" onSubmit={handleUpdateDepartment}>
@@ -632,7 +662,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
 
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
-                Department name
+                Tên phòng ban
               </label>
               <input
                 required
@@ -649,7 +679,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
-                Department code
+                Mã phòng ban
               </label>
               <input
                 type="text"
@@ -665,7 +695,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
-                Manager
+                Người quản lý
               </label>
               <select
                 value={deptForm.managerId}
@@ -677,7 +707,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
                 }
                 className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
               >
-                <option value="">No manager assigned</option>
+                <option value="">Chưa có người quản lý</option>
                 {managerOptions.map(manager => (
                   <option key={manager.id} value={manager.id}>
                     {manager.name}
@@ -692,14 +722,14 @@ export default function Departments({ userRole }: { userRole: Role }) {
                 disabled={isSavingDepartment}
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
               >
-                Cancel
+                Hủy
               </button>
               <button
                 type="submit"
                 disabled={isSavingDepartment}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
               >
-                {isSavingDepartment ? 'Saving...' : 'Save changes'}
+                {isSavingDepartment ? 'Đang lưu...' : 'Lưu thay đổi'}
               </button>
             </div>
           </form>
@@ -709,7 +739,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
       <Modal
         isOpen={isAddPosModalOpen}
         onClose={closeAddPositionModal}
-        title="Add position"
+        title="Thêm vị trí"
       >
         <form className="space-y-4" onSubmit={handleCreatePosition}>
           {positionFormError ? (
@@ -719,13 +749,13 @@ export default function Departments({ userRole }: { userRole: Role }) {
           ) : null}
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-            <span className="font-medium">Department: </span>
+            <span className="font-medium">Phòng ban: </span>
             {departments.find(department => department.id === positionForm.departmentId)
-              ?.name || 'Unknown'}
+              ?.name || 'Không xác định'}
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
-              Position title
+              Tên vị trí
             </label>
             <input
               required
@@ -742,7 +772,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
-              Base salary
+              Mức lương cơ bản
             </label>
             <input
               required
@@ -765,14 +795,14 @@ export default function Departments({ userRole }: { userRole: Role }) {
               disabled={isSavingPosition}
               className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
             >
-              Cancel
+              Hủy
             </button>
             <button
               type="submit"
               disabled={isSavingPosition}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
             >
-              {isSavingPosition ? 'Saving...' : 'Create position'}
+              {isSavingPosition ? 'Đang lưu...' : 'Tạo vị trí'}
             </button>
           </div>
         </form>
@@ -781,7 +811,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
       <Modal
         isOpen={isEditPosModalOpen}
         onClose={closeEditPositionModal}
-        title="Edit position"
+        title="Chỉnh sửa vị trí"
       >
         {selectedPosition ? (
           <form className="space-y-4" onSubmit={handleUpdatePosition}>
@@ -792,14 +822,14 @@ export default function Departments({ userRole }: { userRole: Role }) {
             ) : null}
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <span className="font-medium">Department: </span>
+              <span className="font-medium">Phòng ban: </span>
               {departments.find(
                 department => department.id === selectedPosition.departmentId,
-              )?.name || 'Unknown'}
+              )?.name || 'Không xác định'}
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
-                Position title
+                Tên vị trí
               </label>
               <input
                 required
@@ -816,7 +846,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
-                Base salary
+                Mức lương cơ bản
               </label>
               <input
                 required
@@ -839,14 +869,14 @@ export default function Departments({ userRole }: { userRole: Role }) {
                 disabled={isSavingPosition}
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
               >
-                Cancel
+                Hủy
               </button>
               <button
                 type="submit"
                 disabled={isSavingPosition}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-60"
               >
-                {isSavingPosition ? 'Saving...' : 'Save changes'}
+                {isSavingPosition ? 'Đang lưu...' : 'Lưu thay đổi'}
               </button>
             </div>
           </form>
@@ -856,7 +886,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
       <Modal
         isOpen={!!departmentPendingDisable}
         onClose={closeDisableDepartmentModal}
-        title="Disable department"
+        title="Vô hiệu hóa phòng ban"
       >
         {departmentPendingDisable ? (
           <div className="space-y-4">
@@ -868,9 +898,9 @@ export default function Departments({ userRole }: { userRole: Role }) {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
               <p>
-                This is a soft delete.{' '}
+                Đây là thao tác xóa mềm.{' '}
                 <span className="font-medium">{departmentPendingDisable.name}</span>{' '}
-                will remain visible but move to the inactive state.
+                sẽ vẫn hiển thị nhưng chuyển sang trạng thái ngừng hoạt động.
               </p>
             </div>
 
@@ -881,7 +911,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
                 disabled={isDisablingDepartment}
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
               >
-                Cancel
+                Hủy
               </button>
               <button
                 type="button"
@@ -889,7 +919,7 @@ export default function Departments({ userRole }: { userRole: Role }) {
                 disabled={isDisablingDepartment}
                 className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-md transition-colors disabled:opacity-60"
               >
-                {isDisablingDepartment ? 'Disabling...' : 'Disable department'}
+                {isDisablingDepartment ? 'Đang vô hiệu hóa...' : 'Vô hiệu hóa phòng ban'}
               </button>
             </div>
           </div>

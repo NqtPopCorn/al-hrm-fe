@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Edit2, Eye, Mail, Plus, Search, ShieldBan, Upload } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 import EmployeeDetail from '../components/EmployeeDetail';
 import EmployeeImportModal from '../components/EmployeeImportModal';
@@ -8,6 +9,11 @@ import { useDepartments } from '../hooks/useDepartments';
 import { useEmployees } from '../hooks/useEmployees';
 import { usePositions } from '../hooks/usePositions';
 import { ApiError } from '../lib/api';
+import {
+  getEmployeeExportBlockers,
+  getPageSelectableIds,
+  isEmployeeExportEligible,
+} from './employeeExportSelection';
 import {
   EmployeeImportRowError,
   EmployeeSensitiveUpsertPayload,
@@ -35,6 +41,7 @@ type EmployeeFormState = {
   workStatus: EmployeeWorkStatus;
   emailStatus: CompanyEmailStatus;
   joinDate: string;
+  birthday: string;
   baseSalary: string;
   bankId: string;
   bankAccountNumber: string;
@@ -77,6 +84,7 @@ function createEmptyEmployeeForm(): EmployeeFormState {
     workStatus: 'ACTIVE',
     emailStatus: 'ACTIVE',
     joinDate: getDefaultJoinDate(),
+    birthday: '',
     baseSalary: '',
     bankId: '',
     bankAccountNumber: '',
@@ -100,6 +108,7 @@ function buildEmployeeForm(
     workStatus: employee.workStatus,
     emailStatus: employee.emailStatus,
     joinDate: employee.joinDate,
+    birthday: sensitiveInfo?.birthday ?? '',
     baseSalary:
       sensitiveInfo?.baseSalary !== undefined
         ? String(sensitiveInfo.baseSalary)
@@ -142,6 +151,7 @@ function toSensitivePayload(
     ...(form.bankAccountName.trim()
       ? { bankAccountName: form.bankAccountName.trim() }
       : {}),
+    ...(form.birthday.trim() ? { birthday: form.birthday.trim() } : {}),
   };
 }
 
@@ -204,9 +214,12 @@ function getPosition(positions: Position[], positionId: string | null) {
 export default function Employees({ userRole }: { userRole: Role }) {
   const canAccessEmployeeDirectory =
     userRole === 'Super Admin' || userRole === 'HR Admin';
+  const { showToast } = useToast();
+  const isSuperAdmin = userRole === 'Super Admin';
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
     null,
   );
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -251,11 +264,13 @@ export default function Employees({ userRole }: { userRole: Role }) {
     updateSensitiveInfo,
     setSensitiveInfo,
     importEmployees,
+    exportDefaultSdlcAccounts,
     isCreating,
     isUpdating,
     isDisabling,
     isUpdatingSensitive,
     isImporting,
+    isExportingDefaultSdlcAccounts,
   } = useEmployees({
     enabled: canAccessEmployeeDirectory,
     search: searchQuery.trim() || undefined,
@@ -306,6 +321,10 @@ export default function Employees({ userRole }: { userRole: Role }) {
     (isEmployeesFetching || isDepartmentsFetching || isPositionsFetching);
   const isSavingEmployee =
     isSubmitting || isCreating || isUpdating || isUpdatingSensitive;
+  const selectableIdsOnPage = getPageSelectableIds(employees);
+  const areAllSelectableRowsSelected =
+    selectableIdsOnPage.length > 0 &&
+    selectableIdsOnPage.every(id => selectedEmployeeIds.includes(id));
 
   useEffect(() => {
     if (
@@ -533,6 +552,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
       }
 
       closeAddModal();
+      showToast({ type: 'success', message: `Đã thêm nhân viên ${createdEmployee.name} thành công.` });
     } catch (error) {
       setFormError(getErrorMessage(error, 'Unable to create employee.'));
     } finally {
@@ -566,6 +586,7 @@ export default function Employees({ userRole }: { userRole: Role }) {
       }
 
       closeEditModal();
+      showToast({ type: 'success', message: `Đã cập nhật nhân viên ${updatedEmployee.name} thành công.` });
     } catch (error) {
       setFormError(getErrorMessage(error, 'Unable to update employee.'));
     } finally {
@@ -579,14 +600,45 @@ export default function Employees({ userRole }: { userRole: Role }) {
       setImportRowErrors([]);
 
       const response = await importEmployees(file);
-      setImportSuccessMessage(
-        `Imported ${response.insertedCount} employees from ${response.fileName}.`,
-      );
       setIsImportModalOpen(false);
+      showToast({
+        type: 'success',
+        message: `Đã import ${response.insertedCount} nhân viên từ file ${response.fileName}.`,
+      });
     } catch (error) {
       setImportError(getErrorMessage(error, 'Unable to import employees.'));
       setImportRowErrors(getImportRowErrors(error));
       throw error;
+    }
+  };
+
+  const handleExportDefaultSdlcAccounts = async () => {
+    if (selectedEmployeeIds.length === 0) {
+      return;
+    }
+
+    try {
+      const { blob, filename } = await exportDefaultSdlcAccounts(
+        selectedEmployeeIds,
+      );
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      setSelectedEmployeeIds([]);
+      showToast({
+        type: 'success',
+        message: 'Exported default SDLC account CSV successfully.',
+      });
+    } catch (error) {
+      showToast({
+        type: 'error',
+        message: getErrorMessage(error, 'Unable to export SDLC account CSV.'),
+      });
     }
   };
 
@@ -595,12 +647,16 @@ export default function Employees({ userRole }: { userRole: Role }) {
       return;
     }
 
+    const employeeName = employeePendingDisable.name;
     try {
       setDisableError(null);
       await disableEmployee(employeePendingDisable.id);
       setEmployeePendingDisable(null);
+      showToast({ type: 'success', message: `Đã vô hiệu hóa nhân viên ${employeeName}.` });
     } catch (error) {
-      setDisableError(getErrorMessage(error, 'Unable to disable employee.'));
+      const msg = getErrorMessage(error, 'Unable to disable employee.');
+      setDisableError(msg);
+      showToast({ type: 'error', message: msg });
     }
   };
 
@@ -661,6 +717,18 @@ export default function Employees({ userRole }: { userRole: Role }) {
           >
             <Upload className="w-4 h-4 mr-2" />
             Import employees
+          </button>
+          <button
+            onClick={() => void handleExportDefaultSdlcAccounts()}
+            disabled={selectedEmployeeIds.length === 0 || isExportingDefaultSdlcAccounts}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-medium hover:bg-emerald-700 disabled:opacity-60 transition-colors"
+          >
+            {isExportingDefaultSdlcAccounts
+              ? 'Exporting...'
+              : 'Export Default SDLC Account' +
+                (selectedEmployeeIds.length > 0
+                  ? ' (' + selectedEmployeeIds.length + ')'
+                  : '')}
           </button>
           <button
             onClick={openAddModal}
@@ -736,138 +804,178 @@ export default function Employees({ userRole }: { userRole: Role }) {
               No employees matched the current filters.
             </div>
           ) : (
-            <table className="w-full text-left">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Employee
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Department
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Work Status
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
-                    Email Status
-                  </th>
-                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {employees.map(employee => {
-                  const departmentName = getDepartmentName(
-                    departments,
-                    employee.departmentId,
-                  );
-                  const position = getPosition(positions, employee.positionId);
+            <div className='overflow-x-auto'>
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      <input
+                        type="checkbox"
+                        checked={areAllSelectableRowsSelected}
+                        onChange={event => {
+                          setSelectedEmployeeIds(current =>
+                            event.target.checked
+                              ? Array.from(new Set([...current, ...selectableIdsOnPage]))
+                              : current.filter(id => !selectableIdsOnPage.includes(id)),
+                          );
+                        }}
+                      />
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Employee
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Role
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Department
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Work Status
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">
+                      Email Status
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {employees.map(employee => {
+                    const departmentName = getDepartmentName(
+                      departments,
+                      employee.departmentId,
+                    );
+                    const position = getPosition(positions, employee.positionId);
+                    const exportBlockers = getEmployeeExportBlockers(employee);
+                    const isExportEligible = isEmployeeExportEligible(employee);
+                    const isSelected = selectedEmployeeIds.includes(employee.id);
 
-                  return (
-                    <tr
-                      key={employee.id}
-                      className="hover:bg-slate-50 transition-colors"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded bg-slate-200 flex-shrink-0 flex items-center justify-center text-slate-600 font-medium text-sm">
-                            {employee.name.charAt(0)}
-                          </div>
-                          <div>
-                            <span className="text-sm font-medium">
-                              {employee.name}
-                            </span>
-                            <p className="text-xs text-slate-500 flex items-center mt-0.5">
-                              <Mail className="w-3 h-3 mr-1" />
-                              {employee.companyEmail}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
-                          {employee.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-medium">
-                          {position?.title || 'Unassigned'}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {departmentName || 'No department'}
-                        </p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.workStatus === 'ACTIVE'
-                            ? 'bg-green-50 text-green-700'
-                            : 'bg-amber-100 text-amber-700'
-                            }`}
-                        >
-                          {formatWorkStatusLabel(employee.workStatus)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.isActive === false
-                            ? 'bg-slate-100 text-slate-600'
-                            : 'bg-green-100 text-green-700'
-                            }`}
-                        >
-                          {employee.isActive === false ? 'Inactive' : 'Active'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={event => {
-                              event.stopPropagation();
-                              setSelectedEmployeeId(employee.id);
+                    return (
+                      <tr
+                        key={employee.id}
+                        className="hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-4 py-4 align-top">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={!isExportEligible}
+                            onChange={event => {
+                              setSelectedEmployeeIds(current =>
+                                event.target.checked
+                                  ? Array.from(new Set([...current, employee.id]))
+                                  : current.filter(id => id !== employee.id),
+                              );
                             }}
-                            className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
-                            title="View details"
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-slate-200 flex-shrink-0 flex items-center justify-center text-slate-600 font-medium text-sm">
+                              {employee.name.charAt(0)}
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium">
+                                {employee.name}
+                              </span>
+                              <p className="text-xs text-slate-500 flex items-center mt-0.5">
+                                <Mail className="w-3 h-3 mr-1" />
+                                {employee.companyEmail}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Personal: {employee.personalEmail || 'Not updated'}
+                              </p>
+                              {exportBlockers.length > 0 ? (
+                                <p className="text-xs text-amber-700 mt-1">
+                                  {exportBlockers.join(' - ')}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
+                            {employee.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium">
+                            {position?.title || 'Unassigned'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {departmentName || 'No department'}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.workStatus === 'ACTIVE'
+                              ? 'bg-green-50 text-green-700'
+                              : 'bg-amber-100 text-amber-700'
+                              }`}
                           >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          {employee.isActive !== false ? (
-                            <>
-                              <button
-                                onClick={event => {
-                                  event.stopPropagation();
-                                  void openEditModal(employee);
-                                }}
-                                className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
-                                title="Edit employee"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={event => {
-                                  event.stopPropagation();
-                                  openDisableEmployeeModal(employee);
-                                }}
-                                className="text-xs font-medium text-rose-600 hover:text-rose-700 transition-colors"
-                                title="Disable employee"
-                              >
-                                <ShieldBan className="w-4 h-4" />
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-xs font-medium text-slate-400">
-                              Disabled
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            {formatWorkStatusLabel(employee.workStatus)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${employee.isActive === false
+                              ? 'bg-slate-100 text-slate-600'
+                              : 'bg-green-100 text-green-700'
+                              }`}
+                          >
+                            {employee.isActive === false ? 'Inactive' : 'Active'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              onClick={event => {
+                                event.stopPropagation();
+                                setSelectedEmployeeId(employee.id);
+                              }}
+                              className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
+                              title="View details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {employee.isActive !== false ? (
+                              <>
+                                <button
+                                  onClick={event => {
+                                    event.stopPropagation();
+                                    void openEditModal(employee);
+                                  }}
+                                  className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50"
+                                  title="Edit employee"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={event => {
+                                    event.stopPropagation();
+                                    openDisableEmployeeModal(employee);
+                                  }}
+                                  className="text-xs font-medium text-rose-600 hover:text-rose-700 transition-colors"
+                                  title="Disable employee"
+                                >
+                                  <ShieldBan className="w-4 h-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs font-medium text-slate-400">
+                                Disabled
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
           {employees.length > 0 ? (
             <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between bg-slate-50 gap-4">
@@ -1110,6 +1218,19 @@ export default function Employees({ userRole }: { userRole: Role }) {
               Sensitive information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Birthday
+                </label>
+                <input
+                  type="date"
+                  value={employeeForm.birthday}
+                  onChange={event =>
+                    handleFormChange('birthday', event.target.value)
+                  }
+                  className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                />
+              </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   Base salary
@@ -1385,6 +1506,19 @@ export default function Employees({ userRole }: { userRole: Role }) {
                 Sensitive information
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Birthday
+                  </label>
+                  <input
+                    type="date"
+                    value={employeeForm.birthday}
+                    onChange={event =>
+                      handleFormChange('birthday', event.target.value)
+                    }
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">
                     Base salary

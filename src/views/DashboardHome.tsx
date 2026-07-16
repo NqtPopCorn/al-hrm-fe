@@ -1,9 +1,10 @@
-import { Briefcase, Calendar, Clock, FileText, Server, ShieldCheck, Users } from 'lucide-react';
+import { Briefcase, Calendar, Clock, FileText, Server, ShieldCheck, Users, Activity } from 'lucide-react';
 
 import { getAttendanceStatusMeta } from '../lib/attendance-status';
 import { useAttendance } from '../hooks/useAttendance';
 import { useDailyReports } from '../hooks/useDailyReports';
 import { useEmployees } from '../hooks/useEmployees';
+import { useAuditLogs } from '../hooks/useAuditLogs';
 import { AttendanceRecord, User } from '../types';
 
 function getCurrentMonth() {
@@ -44,6 +45,13 @@ export default function DashboardHome({ user }: { user: User }) {
     employeeIds,
     enabled: isSuperAdmin,
   });
+  
+  const {
+    logs: auditLogs,
+    isLoading: isAuditLoading,
+    error: auditError
+  } = useAuditLogs({ enabled: isSuperAdmin, limit: 5 });
+
   const {
     records: personalRecords,
     isLoading: isPersonalAttendanceLoading,
@@ -62,7 +70,7 @@ export default function DashboardHome({ user }: { user: User }) {
   });
 
   const pageError = isSuperAdmin
-    ? employeesError || attendanceError
+    ? employeesError || attendanceError || auditError
     : personalAttendanceError || reportsError;
   const isLoading = isSuperAdmin
     ? isEmployeesLoading || isAttendanceLoading
@@ -110,7 +118,7 @@ export default function DashboardHome({ user }: { user: User }) {
             )
             .length.toString(),
           icon: Calendar,
-          trend: 'Late, invalid, missing checkout',
+          trend: 'Đi muộn, không hợp lệ, thiếu check-out',
           color: 'text-amber-500',
           trendColor: 'text-slate-500',
         },
@@ -154,7 +162,7 @@ export default function DashboardHome({ user }: { user: User }) {
             )
             .length.toString(),
           icon: Briefcase,
-          trend: 'Late, invalid, missing checkout',
+          trend: 'Đi muộn, không hợp lệ, thiếu check-out',
           color: 'text-amber-500',
           trendColor: 'text-slate-500',
         },
@@ -264,19 +272,47 @@ export default function DashboardHome({ user }: { user: User }) {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col h-full">
-          <h3 className="font-semibold mb-4 text-sm">
-            {isSuperAdmin ? 'Ghi chú vận hành sprint' : 'Báo cáo gần đây của bạn'}
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm">
+              {isSuperAdmin ? 'Hoạt động gần đây (Audit Log)' : 'Báo cáo gần đây của bạn'}
+            </h3>
+            {isSuperAdmin && (
+              <Activity className="w-4 h-4 text-slate-400" />
+            )}
+          </div>
+          
           <div className="space-y-3 flex-1">
             {isSuperAdmin ? (
-              <>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  Daily report đã được đưa vào attendance domain và check-out hiện yêu cầu report cùng ngày.
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  Company attendance view hiện đang tổng hợp từ employee list + monthly summary theo từng employee.
-                </div>
-              </>
+              isAuditLoading ? (
+                 <p className="text-sm text-slate-500">Đang tải audit logs...</p>
+              ) : auditLogs.length > 0 ? (
+                auditLogs.map(log => (
+                  <div key={log._id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 flex flex-col">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="text-xs font-semibold text-slate-700 break-all mr-2">
+                        {log.type}
+                      </span>
+                      <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                        {new Date(log.createdAt).toLocaleTimeString()} {new Date(log.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 flex justify-between items-center">
+                      <span className="truncate max-w-[70%]">
+                        {log.email || log.userId || 'Hệ thống'}
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                        log.severity === 'CRITICAL' ? 'bg-rose-100 text-rose-700' :
+                        log.severity === 'WARN' ? 'bg-amber-100 text-amber-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {log.severity}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">Chưa có hoạt động nào.</p>
+              )
             ) : myReports.slice(0, 3).map(report => (
               <div
                 key={report.id}
@@ -297,6 +333,7 @@ export default function DashboardHome({ user }: { user: User }) {
       </div>
 
       <div className="bg-slate-100 border border-slate-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 gap-2">
+
         <div className="flex flex-wrap items-center gap-4 sm:gap-6">
           <span className="flex items-center gap-1">
             <Server className="w-3.5 h-3.5" />
@@ -306,9 +343,9 @@ export default function DashboardHome({ user }: { user: User }) {
             <ShieldCheck className="w-3.5 h-3.5" />
             Bảo mật: <span className="text-blue-600 ml-1">Cookie auth + role scopes</span>
           </span>
-          <span>Dashboard mode: {isSuperAdmin ? 'Company scope' : 'Personal scope'}</span>
+          <span>Chế độ hiển thị: {isSuperAdmin ? 'Phạm vi toàn công ty' : 'Phạm vi cá nhân'}</span>
         </div>
-        <div className="font-medium text-slate-600">Month: {month}</div>
+        <div className="font-medium text-slate-600">Tháng: {month}</div>
       </div>
     </div>
   );

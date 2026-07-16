@@ -1,42 +1,201 @@
 import { useEffect, useState } from 'react';
 import { Clock, Loader2, Mail, MapPin, Save, Shield, ShieldAlert } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
+import { useSettings } from '../hooks/useSettings';
 import { mockShiftConfig } from '../mockData';
-import {
-  WorkLocationConfig,
-  workLocationService,
-} from '../services/work-location.service';
+import { PayrollPolicyConfig } from '../services/settings.service';
+import { WorkLocationConfig } from '../services/work-location.service';
 
 function showDeferredFeatureAlert(featureName: string) {
   window.alert(
-    `${featureName} is not supported in this sprint yet. Please discuss the target workflow before we wire this settings area to live APIs.`,
+    `${featureName} chưa được hỗ trợ trong sprint này. Vui lòng thảo luận về quy trình mục tiêu trước khi chúng ta kết nối khu vực cài đặt này với các API trực tiếp.`,
   );
 }
 
 const roleScopeRows = [
   {
     area: 'Danh mục nhân viên',
-    currentScope: 'Live',
+    currentScope: 'Trực tiếp',
     note: 'Đã kết nối trực tiếp cho Super Admin.',
   },
   {
     area: 'Xem xét chấm công',
-    currentScope: 'Live',
+    currentScope: 'Trực tiếp',
     note: 'Xem tổng quan công ty hiện chỉ dành cho Super Admin.',
   },
   {
     area: 'Thao tác quản lý lương',
-    currentScope: 'Partial',
+    currentScope: 'Một phần',
     note: 'Chỉ Super Admin có quyền quản lý lương.',
   },
   {
     area: 'Ma trận quyền có thể chỉnh sửa',
-    currentScope: 'Deferred',
+    currentScope: 'Tạm hoãn',
     note: 'Chỉnh sửa quyền trực tiếp nằm ngoài phạm vi sprint hiện tại.',
   },
 ];
 
+const defaultPayrollPolicy: PayrollPolicyConfig = {
+  standardWorkingDaysInMonth: 22,
+  insuranceBaseSource: 'BASE_SALARY',
+  employeeInsuranceRates: {
+    socialInsurance: 0,
+    healthInsurance: 0,
+    unemploymentInsurance: 0,
+  },
+  employerInsuranceRates: {
+    socialInsurance: 0,
+    healthInsurance: 0,
+    unemploymentInsurance: 0,
+    occupationalAccidentInsurance: 0,
+  },
+  insuranceSalaryCap: null,
+  regionalMinimumWage: null,
+  validationRules: {
+    warnIfInsuranceBaseBelowRegionalMinimum: true,
+    warnIfNetSalaryNegative: true,
+    warnIfPayrollVariancePercentExceeds: 10,
+  },
+};
+
+type PayrollPolicyInputState = {
+  standardWorkingDaysInMonth: string;
+  insuranceSalaryCap: string;
+  regionalMinimumWage: string;
+  employeeSocialInsurance: string;
+  employeeHealthInsurance: string;
+  employeeUnemploymentInsurance: string;
+  employerSocialInsurance: string;
+  employerHealthInsurance: string;
+  employerUnemploymentInsurance: string;
+  employerOccupationalAccidentInsurance: string;
+  warnIfPayrollVariancePercentExceeds: string;
+};
+
+function toPayrollPolicyInputState(
+  policy: PayrollPolicyConfig,
+): PayrollPolicyInputState {
+  return {
+    standardWorkingDaysInMonth: String(policy.standardWorkingDaysInMonth),
+    insuranceSalaryCap:
+      policy.insuranceSalaryCap === null
+        ? ''
+        : String(policy.insuranceSalaryCap),
+    regionalMinimumWage:
+      policy.regionalMinimumWage === null
+        ? ''
+        : String(policy.regionalMinimumWage),
+    employeeSocialInsurance: String(
+      policy.employeeInsuranceRates.socialInsurance,
+    ),
+    employeeHealthInsurance: String(
+      policy.employeeInsuranceRates.healthInsurance,
+    ),
+    employeeUnemploymentInsurance: String(
+      policy.employeeInsuranceRates.unemploymentInsurance,
+    ),
+    employerSocialInsurance: String(
+      policy.employerInsuranceRates.socialInsurance,
+    ),
+    employerHealthInsurance: String(
+      policy.employerInsuranceRates.healthInsurance,
+    ),
+    employerUnemploymentInsurance: String(
+      policy.employerInsuranceRates.unemploymentInsurance,
+    ),
+    employerOccupationalAccidentInsurance: String(
+      policy.employerInsuranceRates.occupationalAccidentInsurance,
+    ),
+    warnIfPayrollVariancePercentExceeds:
+      policy.validationRules.warnIfPayrollVariancePercentExceeds === null
+        ? ''
+        : String(policy.validationRules.warnIfPayrollVariancePercentExceeds),
+  };
+}
+
+function parseNumberInput(value: string): number | undefined {
+  const trimmedValue = value.trim();
+  if (trimmedValue === '') {
+    return undefined;
+  }
+
+  const parsedValue = Number(trimmedValue);
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
+}
+
+function parseRequiredPositiveInteger(value: string): number | undefined {
+  const parsedValue = parseNumberInput(value);
+  return parsedValue !== undefined &&
+    Number.isInteger(parsedValue) &&
+    parsedValue >= 1
+    ? parsedValue
+    : undefined;
+}
+
+function parseRequiredNonNegativeNumber(value: string): number | undefined {
+  const parsedValue = parseNumberInput(value);
+  return parsedValue !== undefined && parsedValue >= 0
+    ? parsedValue
+    : undefined;
+}
+
+function parseNullableNumber(value: string): number | null | undefined {
+  const trimmedValue = value.trim();
+  if (trimmedValue === '') {
+    return null;
+  }
+
+  const parsedValue = Number(trimmedValue);
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
+}
+
+function parseNullableNonNegativeNumber(
+  value: string,
+): number | null | undefined {
+  const parsedValue = parseNullableNumber(value);
+  if (parsedValue === null) {
+    return null;
+  }
+
+  return parsedValue !== undefined && parsedValue >= 0
+    ? parsedValue
+    : undefined;
+}
+
+function getPayrollInputClass(hasError: boolean, isReadOnly = false): string {
+  const stateClasses = isReadOnly
+    ? 'border-slate-200 bg-slate-50 text-slate-600'
+    : hasError
+      ? 'border-rose-300 focus:border-rose-400 focus:ring-2 focus:ring-rose-400/10'
+      : 'border-slate-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/10';
+
+  return `w-full rounded-lg px-3 py-2 text-sm outline-none disabled:bg-slate-50 disabled:text-slate-400 ${stateClasses}`;
+}
+
 export default function Settings() {
+  const { showToast } = useToast();
+  const { 
+    payrollPolicy: fetchedPayrollPolicy, 
+    workLocation: fetchedWorkLocation,
+    isPayrollPolicyLoading,
+    isWorkLocationLoading,
+    savePayrollPolicy,
+    saveWorkLocation,
+    isSavingPayrollPolicy,
+    isSavingWorkLocation
+  } = useSettings();
+
+  const [payrollPolicy, setPayrollPolicy] = useState<PayrollPolicyConfig>(
+    defaultPayrollPolicy,
+  );
+  const [payrollPolicyInputs, setPayrollPolicyInputs] =
+    useState<PayrollPolicyInputState>(() =>
+      toPayrollPolicyInputState(defaultPayrollPolicy),
+    );
+  const [hasLoadedPayrollPolicy, setHasLoadedPayrollPolicy] = useState(false);
+  const [payrollSaveError, setPayrollSaveError] = useState<string | null>(null);
+  
   const [locationConfig, setLocationConfig] = useState<WorkLocationConfig>({
     officeIp: '',
     wifiSsid: '',
@@ -44,50 +203,213 @@ export default function Settings() {
     gpsLng: undefined,
     gpsRadiusMeters: 100,
   });
-  const [isLoadingLocation, setIsLoadingLocation] = useState(true);
-  const [isSavingLocation, setIsSavingLocation] = useState(false);
   const [locationSaveError, setLocationSaveError] = useState<string | null>(null);
-  const [locationSaveSuccess, setLocationSaveSuccess] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    setIsLoadingLocation(true);
-    workLocationService.getActive().then(config => {
-      if (cancelled) return;
-      if (config) {
-        setLocationConfig({
-          officeIp: config.officeIp ?? '',
-          wifiSsid: config.wifiSsid ?? '',
-          gpsLat: config.gpsLat ?? undefined,
-          gpsLng: config.gpsLng ?? undefined,
-          gpsRadiusMeters: config.gpsRadiusMeters ?? 100,
-        });
-      }
-      setIsLoadingLocation(false);
-    });
-    return () => { cancelled = true; };
-  }, []);
+    if (fetchedPayrollPolicy) {
+      setPayrollPolicy(fetchedPayrollPolicy);
+      setPayrollPolicyInputs(toPayrollPolicyInputState(fetchedPayrollPolicy));
+      setHasLoadedPayrollPolicy(true);
+      setPayrollSaveError(null);
+    }
+  }, [fetchedPayrollPolicy]);
+
+  useEffect(() => {
+    if (fetchedWorkLocation) {
+      setLocationConfig({
+        officeIp: fetchedWorkLocation.officeIp ?? '',
+        wifiSsid: fetchedWorkLocation.wifiSsid ?? '',
+        gpsLat: fetchedWorkLocation.gpsLat ?? undefined,
+        gpsLng: fetchedWorkLocation.gpsLng ?? undefined,
+        gpsRadiusMeters: fetchedWorkLocation.gpsRadiusMeters ?? 100,
+      });
+    }
+  }, [fetchedWorkLocation]);
+
+
+
+  const handleSavePayrollPolicy = async () => {
+    if (!hasLoadedPayrollPolicy || hasPayrollValidationError) {
+      setPayrollSaveError(
+        !hasLoadedPayrollPolicy
+          ? 'Không thể tải chính sách lương, nên chức năng lưu đã bị vô hiệu hóa.'
+          : 'Vui lòng sửa các giá trị chính sách lương không hợp lệ trước khi lưu.',
+      );
+      return;
+    }
+
+    try {
+      const saved = await savePayrollPolicy(payrollPolicy);
+      setPayrollPolicy(saved);
+      setPayrollPolicyInputs(toPayrollPolicyInputState(saved));
+      setHasLoadedPayrollPolicy(true);
+      showToast({ type: 'success', message: 'Đã lưu chính sách lương thành công.' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Không thể lưu chính sách lương.';
+      setPayrollSaveError(msg);
+      showToast({ type: 'error', message: msg });
+    }
+  };
+
+  const standardWorkingDaysError =
+    parseRequiredPositiveInteger(payrollPolicyInputs.standardWorkingDaysInMonth) ===
+    undefined;
+  const insuranceSalaryCapError =
+    parseNullableNonNegativeNumber(payrollPolicyInputs.insuranceSalaryCap) ===
+    undefined;
+  const regionalMinimumWageError =
+    parseNullableNonNegativeNumber(payrollPolicyInputs.regionalMinimumWage) ===
+    undefined;
+  const employeeSocialInsuranceError =
+    parseRequiredNonNegativeNumber(payrollPolicyInputs.employeeSocialInsurance) ===
+    undefined;
+  const employeeHealthInsuranceError =
+    parseRequiredNonNegativeNumber(payrollPolicyInputs.employeeHealthInsurance) ===
+    undefined;
+  const employeeUnemploymentInsuranceError =
+    parseRequiredNonNegativeNumber(
+      payrollPolicyInputs.employeeUnemploymentInsurance,
+    ) === undefined;
+  const employerSocialInsuranceError =
+    parseRequiredNonNegativeNumber(payrollPolicyInputs.employerSocialInsurance) ===
+    undefined;
+  const employerHealthInsuranceError =
+    parseRequiredNonNegativeNumber(payrollPolicyInputs.employerHealthInsurance) ===
+    undefined;
+  const employerUnemploymentInsuranceError =
+    parseRequiredNonNegativeNumber(
+      payrollPolicyInputs.employerUnemploymentInsurance,
+    ) === undefined;
+  const employerOccupationalAccidentInsuranceError =
+    parseRequiredNonNegativeNumber(
+      payrollPolicyInputs.employerOccupationalAccidentInsurance,
+    ) === undefined;
+  const hasPayrollValidationError =
+    standardWorkingDaysError ||
+    insuranceSalaryCapError ||
+    regionalMinimumWageError ||
+    employeeSocialInsuranceError ||
+    employeeHealthInsuranceError ||
+    employeeUnemploymentInsuranceError ||
+    employerSocialInsuranceError ||
+    employerHealthInsuranceError ||
+    employerUnemploymentInsuranceError ||
+    employerOccupationalAccidentInsuranceError;
+
+  const handleStandardWorkingDaysChange = (value: string) => {
+    setPayrollPolicyInputs(current => ({
+      ...current,
+      standardWorkingDaysInMonth: value,
+    }));
+
+    const parsedValue = parseRequiredPositiveInteger(value);
+    if (parsedValue === undefined) {
+      return;
+    }
+
+    setPayrollPolicy(current => ({
+      ...current,
+      standardWorkingDaysInMonth: parsedValue,
+    }));
+  };
+
+  const handleNullableFieldChange = (
+    field: 'insuranceSalaryCap' | 'regionalMinimumWage',
+    value: string,
+  ) => {
+    setPayrollPolicyInputs(current => ({
+      ...current,
+      [field]: value,
+    }));
+
+    const parsedValue = parseNullableNonNegativeNumber(value);
+    if (parsedValue === undefined) {
+      return;
+    }
+
+    setPayrollPolicy(current => ({
+      ...current,
+      [field]: parsedValue,
+    }));
+  };
+
+  const handleEmployeeRateChange = (
+    field:
+      | 'socialInsurance'
+      | 'healthInsurance'
+      | 'unemploymentInsurance',
+    inputField:
+      | 'employeeSocialInsurance'
+      | 'employeeHealthInsurance'
+      | 'employeeUnemploymentInsurance',
+    value: string,
+  ) => {
+    setPayrollPolicyInputs(current => ({
+      ...current,
+      [inputField]: value,
+    }));
+
+    const parsedValue = parseRequiredNonNegativeNumber(value);
+    if (parsedValue === undefined) {
+      return;
+    }
+
+    setPayrollPolicy(current => ({
+      ...current,
+      employeeInsuranceRates: {
+        ...current.employeeInsuranceRates,
+        [field]: parsedValue,
+      },
+    }));
+  };
+
+  const handleEmployerRateChange = (
+    field:
+      | 'socialInsurance'
+      | 'healthInsurance'
+      | 'unemploymentInsurance'
+      | 'occupationalAccidentInsurance',
+    inputField:
+      | 'employerSocialInsurance'
+      | 'employerHealthInsurance'
+      | 'employerUnemploymentInsurance'
+      | 'employerOccupationalAccidentInsurance',
+    value: string,
+  ) => {
+    setPayrollPolicyInputs(current => ({
+      ...current,
+      [inputField]: value,
+    }));
+
+    const parsedValue = parseRequiredNonNegativeNumber(value);
+    if (parsedValue === undefined) {
+      return;
+    }
+
+    setPayrollPolicy(current => ({
+      ...current,
+      employerInsuranceRates: {
+        ...current.employerInsuranceRates,
+        [field]: parsedValue,
+      },
+    }));
+  };
 
   const handleSaveLocation = async () => {
-    setIsSavingLocation(true);
     setLocationSaveError(null);
-    setLocationSaveSuccess(false);
     try {
-      await workLocationService.saveConfig({
+      await saveWorkLocation({
         officeIp: locationConfig.officeIp || null,
         wifiSsid: locationConfig.wifiSsid || null,
         gpsLat: locationConfig.gpsLat ?? null,
         gpsLng: locationConfig.gpsLng ?? null,
         gpsRadiusMeters: locationConfig.gpsRadiusMeters ?? 100,
       });
-      setLocationSaveSuccess(true);
-      setTimeout(() => setLocationSaveSuccess(false), 3000);
+      showToast({ type: 'success', message: 'Đã lưu cấu hình vị trí làm việc thành công.' });
     } catch (err) {
-      setLocationSaveError(
-        err instanceof Error ? err.message : 'Không thể lưu cấu hình.',
-      );
-    } finally {
-      setIsSavingLocation(false);
+      const msg = err instanceof Error ? err.message : 'Không thể lưu cấu hình.';
+      setLocationSaveError(msg);
+      showToast({ type: 'error', message: msg });
     }
   };
 
@@ -111,7 +433,384 @@ export default function Settings() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {/* Work Shift Config — read-only */}
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="mr-3 rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                <Shield className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">
+                  Chính sách lương
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Chính sách lương áp dụng toàn công ty, dành cho Super Admin.
+                </p>
+              </div>
+            </div>
+            {isPayrollPolicyLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+            ) : null}
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">
+              <p className="font-medium">Chỉ dành cho Super Admin</p>
+              <p className="mt-1 text-emerald-800">
+                Trình chỉnh sửa này quản lý chính sách lương đang áp dụng của
+                công ty. Tính năng tự động tính thuế TNCN chưa được đưa vào giai đoạn này.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Số ngày làm việc chuẩn trong tháng
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={payrollPolicyInputs.standardWorkingDaysInMonth}
+                  onChange={event =>
+                    handleStandardWorkingDaysChange(event.target.value)
+                  }
+                  disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                  className={getPayrollInputClass(standardWorkingDaysError)}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Nguồn tính mức đóng bảo hiểm
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={payrollPolicy.insuranceBaseSource}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Mức lương đóng bảo hiểm tối đa
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  placeholder="Không bắt buộc"
+                  value={payrollPolicyInputs.insuranceSalaryCap}
+                  onChange={event =>
+                    handleNullableFieldChange(
+                      'insuranceSalaryCap',
+                      event.target.value,
+                    )
+                  }
+                  disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                  className={getPayrollInputClass(insuranceSalaryCapError)}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Lương tối thiểu vùng
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  placeholder="Không bắt buộc"
+                  value={payrollPolicyInputs.regionalMinimumWage}
+                  onChange={event =>
+                    handleNullableFieldChange(
+                      'regionalMinimumWage',
+                      event.target.value,
+                    )
+                  }
+                  disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                  className={getPayrollInputClass(regionalMinimumWageError)}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Tỷ lệ bảo hiểm người lao động
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Nhập tỷ lệ dạng thập phân, ví dụ 0.08 cho 8%.
+                </p>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Bảo hiểm xã hội
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.001"
+                    value={payrollPolicyInputs.employeeSocialInsurance}
+                    onChange={event =>
+                      handleEmployeeRateChange(
+                        'socialInsurance',
+                        'employeeSocialInsurance',
+                        event.target.value,
+                      )
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className={getPayrollInputClass(employeeSocialInsuranceError)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Bảo hiểm y tế
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.001"
+                    value={payrollPolicyInputs.employeeHealthInsurance}
+                    onChange={event =>
+                      handleEmployeeRateChange(
+                        'healthInsurance',
+                        'employeeHealthInsurance',
+                        event.target.value,
+                      )
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className={getPayrollInputClass(employeeHealthInsuranceError)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Bảo hiểm thất nghiệp
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.001"
+                    value={payrollPolicyInputs.employeeUnemploymentInsurance}
+                    onChange={event =>
+                      handleEmployeeRateChange(
+                        'unemploymentInsurance',
+                        'employeeUnemploymentInsurance',
+                        event.target.value,
+                      )
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className={getPayrollInputClass(
+                      employeeUnemploymentInsuranceError,
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Tỷ lệ bảo hiểm người sử dụng lao động
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Giữ các giá trị này khớp với chính sách chung của công ty.
+                </p>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Bảo hiểm xã hội
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.001"
+                    value={payrollPolicyInputs.employerSocialInsurance}
+                    onChange={event =>
+                      handleEmployerRateChange(
+                        'socialInsurance',
+                        'employerSocialInsurance',
+                        event.target.value,
+                      )
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className={getPayrollInputClass(employerSocialInsuranceError)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Bảo hiểm y tế
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.001"
+                    value={payrollPolicyInputs.employerHealthInsurance}
+                    onChange={event =>
+                      handleEmployerRateChange(
+                        'healthInsurance',
+                        'employerHealthInsurance',
+                        event.target.value,
+                      )
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className={getPayrollInputClass(employerHealthInsuranceError)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Bảo hiểm thất nghiệp
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.001"
+                    value={payrollPolicyInputs.employerUnemploymentInsurance}
+                    onChange={event =>
+                      handleEmployerRateChange(
+                        'unemploymentInsurance',
+                        'employerUnemploymentInsurance',
+                        event.target.value,
+                      )
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className={getPayrollInputClass(
+                      employerUnemploymentInsuranceError,
+                    )}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Bảo hiểm tai nạn lao động
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.001"
+                    value={payrollPolicyInputs.employerOccupationalAccidentInsurance}
+                    onChange={event =>
+                      handleEmployerRateChange(
+                        'occupationalAccidentInsurance',
+                        'employerOccupationalAccidentInsurance',
+                        event.target.value,
+                      )
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className={getPayrollInputClass(
+                      employerOccupationalAccidentInsuranceError,
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Quy tắc kiểm tra
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Các cảnh báo hỗ trợ việc rà soát lương. Tính năng tự động
+                  tính thuế TNCN vẫn nằm ngoài phạm vi của giai đoạn này.
+                </p>
+              </div>
+              <div className="mt-4 space-y-3">
+                <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={
+                      payrollPolicy.validationRules
+                        .warnIfInsuranceBaseBelowRegionalMinimum
+                    }
+                    onChange={event =>
+                      setPayrollPolicy(current => ({
+                        ...current,
+                        validationRules: {
+                          ...current.validationRules,
+                          warnIfInsuranceBaseBelowRegionalMinimum:
+                            event.target.checked,
+                        },
+                      }))
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Cảnh báo nếu mức đóng bảo hiểm thấp hơn lương tối thiểu vùng.</span>
+                </label>
+                <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={payrollPolicy.validationRules.warnIfNetSalaryNegative}
+                    onChange={event =>
+                      setPayrollPolicy(current => ({
+                        ...current,
+                        validationRules: {
+                          ...current.validationRules,
+                          warnIfNetSalaryNegative: event.target.checked,
+                        },
+                      }))
+                    }
+                    disabled={isPayrollPolicyLoading || isSavingPayrollPolicy}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Cảnh báo nếu lương thực nhận bị âm.</span>
+                </label>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <label className="block text-xs font-medium text-amber-950">
+                        Cảnh báo nếu chênh lệch lương vượt quá phần trăm
+                      </label>
+                      <p className="mt-1 text-xs text-amber-800">
+                        Tạm hoãn sang giai đoạn sau. Ngưỡng này chỉ hiển thị để
+                        tham khảo và chưa được áp dụng bởi quy trình lương
+                        hiện tại.
+                      </p>
+                    </div>
+                    <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+                      Tạm hoãn
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={payrollPolicyInputs.warnIfPayrollVariancePercentExceeds}
+                    readOnly
+                    disabled
+                    className={`${getPayrollInputClass(false, true)} mt-3`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {payrollSaveError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
+                {payrollSaveError}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => void handleSavePayrollPolicy()}
+              disabled={
+                isSavingPayrollPolicy ||
+                isPayrollPolicyLoading ||
+                !hasLoadedPayrollPolicy ||
+                hasPayrollValidationError
+              }
+              className="inline-flex w-full items-center justify-center rounded-md bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSavingPayrollPolicy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              {isSavingPayrollPolicy ? 'Đang lưu...' : 'Lưu chính sách lương'}
+            </button>
+          </div>
+        </div>
+
+        {/* Cấu hình ca làm việc — chỉ xem */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-center">
             <div className="mr-3 rounded-lg bg-blue-50 p-2 text-blue-600">
@@ -197,7 +896,7 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Company Email — read-only */}
+        {/* Email công ty — chỉ xem */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-center">
             <div className="mr-3 rounded-lg bg-purple-50 p-2 text-purple-600">
@@ -239,7 +938,7 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Work Locations — LIVE */}
+        {/* Vị trí làm việc — TRỰC TIẾP */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center">
@@ -255,7 +954,7 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-            {isLoadingLocation && (
+            {isWorkLocationLoading && (
               <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
             )}
           </div>
@@ -272,7 +971,7 @@ export default function Settings() {
                 onChange={e =>
                   setLocationConfig(c => ({ ...c, officeIp: e.target.value }))
                 }
-                disabled={isLoadingLocation}
+                disabled={isWorkLocationLoading}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
               />
             </div>
@@ -287,7 +986,7 @@ export default function Settings() {
                 onChange={e =>
                   setLocationConfig(c => ({ ...c, wifiSsid: e.target.value }))
                 }
-                disabled={isLoadingLocation}
+                disabled={isWorkLocationLoading}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
               />
             </div>
@@ -307,7 +1006,7 @@ export default function Settings() {
                       gpsLat: e.target.value ? Number(e.target.value) : undefined,
                     }))
                   }
-                  disabled={isLoadingLocation}
+                  disabled={isWorkLocationLoading}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
                 />
               </div>
@@ -326,7 +1025,7 @@ export default function Settings() {
                       gpsLng: e.target.value ? Number(e.target.value) : undefined,
                     }))
                   }
-                  disabled={isLoadingLocation}
+                  disabled={isWorkLocationLoading}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
                 />
               </div>
@@ -346,7 +1045,7 @@ export default function Settings() {
                     gpsRadiusMeters: Number(e.target.value),
                   }))
                 }
-                disabled={isLoadingLocation}
+                disabled={isWorkLocationLoading}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/10 disabled:bg-slate-50 disabled:text-slate-400"
               />
             </div>
@@ -357,29 +1056,23 @@ export default function Settings() {
               </div>
             ) : null}
 
-            {locationSaveSuccess ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
-                ✓ Đã lưu cấu hình vị trí thành công.
-              </div>
-            ) : null}
-
             <button
               type="button"
               onClick={() => void handleSaveLocation()}
-              disabled={isSavingLocation || isLoadingLocation}
+              disabled={isSavingWorkLocation || isWorkLocationLoading}
               className="inline-flex w-full items-center justify-center rounded-md bg-orange-600 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSavingLocation ? (
+              {isSavingWorkLocation ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Save className="mr-2 h-4 w-4" />
               )}
-              {isSavingLocation ? 'Đang lưu...' : 'Lưu cấu hình'}
+              {isSavingWorkLocation ? 'Đang lưu...' : 'Lưu cấu hình'}
             </button>
           </div>
         </div>
 
-        {/* Role Access Overview */}
+        {/* Tổng quan quyền truy cập */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-center">
             <div className="mr-3 rounded-lg bg-emerald-50 p-2 text-emerald-600">
@@ -410,9 +1103,9 @@ export default function Settings() {
                   </div>
                   <span
                     className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                      row.currentScope === 'Live'
+                      row.currentScope === 'Trực tiếp'
                         ? 'bg-emerald-100 text-emerald-700'
-                        : row.currentScope === 'Partial'
+                        : row.currentScope === 'Một phần'
                           ? 'bg-amber-100 text-amber-700'
                           : 'bg-slate-200 text-slate-700'
                     }`}

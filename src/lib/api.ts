@@ -143,6 +143,76 @@ export async function apiRequest<T>(
   }
 }
 
+async function readDownloadErrorPayload(data: unknown) {
+  if (!(data instanceof Blob)) {
+    return data;
+  }
+
+  const text = await data.text();
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
+
+export async function apiDownload(
+  method: string,
+  path: string,
+  options: ApiRequestOptions = {},
+) {
+  try {
+    let cleanedQuery: Record<string, Primitive> | undefined;
+    if (options.query) {
+      cleanedQuery = Object.fromEntries(
+        Object.entries(options.query).filter(
+          ([, value]) => value !== undefined && value !== null && value !== '',
+        ),
+      ) as Record<string, Primitive>;
+    }
+
+    const response = await axiosInstance.request<Blob>({
+      url: path,
+      method,
+      data: options.body,
+      params: cleanedQuery,
+      responseType: 'blob',
+      ...options,
+    });
+
+    return {
+      blob: response.data,
+      headers: response.headers,
+    };
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      const payload = await readDownloadErrorPayload(error.response.data);
+      const message =
+        payload &&
+        typeof payload === 'object' &&
+        typeof payload.message === 'string'
+          ? payload.message
+          : error.response.statusText || 'Request failed';
+
+      throw new ApiError(message, {
+        status: error.response.status,
+        code:
+          payload &&
+          typeof payload === 'object' &&
+          typeof payload.code === 'string'
+            ? payload.code
+            : undefined,
+        details: payload,
+      });
+    }
+
+    throw new ApiError(error instanceof Error ? error.message : 'Unknown error', {
+      status: 500,
+    });
+  }
+}
+
 export const api = {
   get<T>(path: string, options?: Omit<ApiRequestOptions, 'body'>) {
     return apiRequest<T>('GET', path, options);
