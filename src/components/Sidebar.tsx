@@ -11,6 +11,7 @@ import {
   Building2,
   Shield,
   SendToBack,
+  CalendarDays,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Role } from '../types';
@@ -28,6 +29,7 @@ export type AppTab =
   | 'documents'
   | 'projects'
   | 'handover_record'
+  | 'working_schedule'
   | 'settings';
 
 type NavItem = {
@@ -116,6 +118,12 @@ const navItems: NavItem[] = [
     id: 'handover_record',
     label: 'Bàn giao',
     icon: SendToBack,
+    roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
+  },
+  {
+    id: 'working_schedule',
+    label: 'Lịch làm việc',
+    icon: CalendarDays,
     roles: ['Super Admin', 'HR Admin', 'Manager', 'Employee'],
   },
   {

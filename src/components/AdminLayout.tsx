@@ -21,6 +21,7 @@ const routeTitles: Record<string, string> = {
   documents: 'Tài liệu',
   projects: 'Dự án',
   handover_record: 'Bàn giao công việc',
+  working_schedule: 'Lịch làm việc',
   settings: 'Cài đặt',
 };
 
