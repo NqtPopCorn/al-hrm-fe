@@ -11,27 +11,12 @@ import {
 } from '../lib/attendance-status';
 import { useAttendance } from '../hooks/useAttendance';
 import { useDailyReports } from '../hooks/useDailyReports';
-import { workLocationService, WorkLocationConfig } from '../services/work-location.service';
 
-function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371e3; // Earth radius in meters
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
 import {
   AttendanceAdjustmentRequest,
   AttendanceRecord,
   DailyReport,
   User,
-  WorkMode,
 } from '../types';
 
 const shiftCopy = {
@@ -93,7 +78,6 @@ export default function CheckInOut({ user }: { user: User }) {
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   );
   const [viewMode, setViewMode] = useState<'personal' | 'requests' | 'reports'>('personal');
-  const [workMode, setWorkMode] = useState<WorkMode>('OFFICE');
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportContent, setReportContent] = useState('');
@@ -106,27 +90,18 @@ export default function CheckInOut({ user }: { user: User }) {
   const [viewingReport, setViewingReport] = useState<DailyReport | null>(null);
   const [editingReport, setEditingReport] = useState<DailyReport | null>(null);
   const [currentGps, setCurrentGps] = useState<{ lat: number; lng: number } | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<'idle' | 'fetching' | 'ok' | 'denied'>('idle');
-  const [officeConfig, setOfficeConfig] = useState<WorkLocationConfig | null>(null);
-  const [detectedDistance, setDetectedDistance] = useState<number | null>(null);
 
-  /** Lấy GPS hiện tại — MVP: server tin client, không validate phức tạp */
   const getGps = (): Promise<{ lat: number; lng: number } | null> => {
     if (!navigator.geolocation) return Promise.resolve(null);
     if (currentGps) return Promise.resolve(currentGps);
-    setGpsStatus('fetching');
     return new Promise(resolve => {
       navigator.geolocation.getCurrentPosition(
         pos => {
           const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           setCurrentGps(coords);
-          setGpsStatus('ok');
           resolve(coords);
         },
-        () => {
-          setGpsStatus('denied');
-          resolve(null);
-        },
+        () => resolve(null),
         { timeout: 5000 },
       );
     });
@@ -249,53 +224,12 @@ export default function CheckInOut({ user }: { user: User }) {
   }, []);
 
   useEffect(() => {
-    const detectLocation = async () => {
-      try {
-        const config = await workLocationService.getActive();
-        setOfficeConfig(config);
-
-        if (navigator.geolocation) {
-          setGpsStatus('fetching');
-          navigator.geolocation.getCurrentPosition(
-            pos => {
-              const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-              setCurrentGps(coords);
-              setGpsStatus('ok');
-
-              if (config && config.gpsLat && config.gpsLng) {
-                const distance = calculateDistanceMeters(
-                  coords.lat,
-                  coords.lng,
-                  config.gpsLat,
-                  config.gpsLng
-                );
-                setDetectedDistance(distance);
-                const radius = config.gpsRadiusMeters ?? 100;
-                if (distance <= radius) {
-                  setWorkMode('OFFICE');
-                } else {
-                  setWorkMode('WFH');
-                }
-              } else {
-                setWorkMode('OFFICE');
-              }
-            },
-            () => {
-              setGpsStatus('denied');
-              setWorkMode('WFH');
-            },
-            { timeout: 5000 }
-          );
-        } else {
-          setWorkMode('OFFICE');
-        }
-      } catch (error) {
-        console.error('Failed to initialize office location:', error);
-        setWorkMode('OFFICE');
-      }
-    };
-
-    void detectLocation();
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => setCurrentGps({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => { /* GPS denied — proceed without coordinates */ },
+      { timeout: 5000 },
+    );
   }, []);
 
   const openAdjustModal = (record: AttendanceRecord) => {
@@ -316,15 +250,15 @@ export default function CheckInOut({ user }: { user: User }) {
 
   const handleCheckIn = async () => {
     try {
-      const gps = workMode === 'OFFICE' ? await getGps() : null;
+      const gps = await getGps();
       await checkIn({
         workDate: today,
         checkInAt: new Date().toISOString(),
-        requestedMode: workMode,
+        requestedMode: 'OFFICE',
         ...(gps ? { gps } : {}),
       });
       const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-      showToast({ type: 'success', message: `Check in lúc ${timeStr} thành công! Chúc buổi làm việc hiệu quả 💪` });
+      showToast({ type: 'success', message: `Check in lúc ${timeStr} thành công!` });
     } catch (error) {
       const msg = getErrorMessage(error, 'Không thể check in.');
       setReportError(msg);
@@ -348,18 +282,18 @@ export default function CheckInOut({ user }: { user: User }) {
         setReportContent('');
         showToast({ type: 'success', message: 'Đã cập nhật báo cáo thành công.' });
       } else {
-        const gps = workMode === 'OFFICE' ? (currentGps ?? await getGps()) : null;
+        const gps = currentGps ?? await getGps();
         await checkOut({
           workDate: today,
           checkOutAt: new Date().toISOString(),
           reportContentHtml: reportContent,
-          requestedMode: workMode,
+          requestedMode: 'OFFICE',
           ...(gps ? { gps } : {}),
         });
         setIsReportModalOpen(false);
         setEditingReport(null);
         setReportContent('');
-        showToast({ type: 'success', message: 'Check out và nộp báo cáo thành công! Hẹn gặp lại ngày mai. 👋' });
+        showToast({ type: 'success', message: 'Check out và nộp báo cáo thành công!' });
       }
     } catch (error) {
       setReportError(
@@ -418,65 +352,6 @@ export default function CheckInOut({ user }: { user: User }) {
           </div>
 
           <div className="w-full space-y-3">
-            <div className="space-y-1.5 text-left">
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Chế độ làm việc
-              </label>
-              <select
-                value={workMode}
-                onChange={event => setWorkMode(event.target.value as WorkMode)}
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white font-medium text-slate-700"
-              >
-                <option value="OFFICE">🏢 Office (Văn phòng)</option>
-                <option value="WFH">🏠 WFH (Làm việc từ xa)</option>
-              </select>
-            </div>
-
-            {/* Location Status Alert / Message */}
-            <div className="text-left">
-              {gpsStatus === 'fetching' && (
-                <div className="rounded-md border border-blue-100 bg-blue-50/50 px-3 py-2 text-xs text-blue-700 flex items-center">
-                  <span className="animate-spin mr-2">📡</span>
-                  Đang xác định vị trí của bạn...
-                </div>
-              )}
-              {gpsStatus === 'denied' && (
-                <div className="rounded-md border border-rose-100 bg-rose-50/50 px-3 py-2 text-xs text-rose-700 flex items-start">
-                  <span className="mr-1.5 mt-0.5">⚠️</span>
-                  <div>
-                    <span className="font-semibold block">Không lấy được GPS</span>
-                    Hệ thống đề xuất chế độ WFH. Bạn có thể thay đổi thủ công.
-                  </div>
-                </div>
-              )}
-              {gpsStatus === 'ok' && officeConfig && (
-                <div>
-                  {detectedDistance !== null && officeConfig.gpsRadiusMeters !== undefined ? (
-                    detectedDistance <= (officeConfig.gpsRadiusMeters ?? 100) ? (
-                      <div className="rounded-md border border-green-100 bg-green-50/50 px-3 py-2 text-xs text-green-700 flex items-start">
-                        <span className="mr-1.5 mt-0.5">📍</span>
-                        <div>
-                          <span className="font-semibold block">Đang ở văn phòng ({officeConfig.name || 'Nova Office'})</span>
-                          Bạn cách văn phòng {detectedDistance.toFixed(0)}m (trong bán kính cho phép {officeConfig.gpsRadiusMeters}m). Tự động chọn Office.
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-md border border-amber-100 bg-amber-50/50 px-3 py-2 text-xs text-amber-700 flex items-start">
-                        <span className="mr-1.5 mt-0.5">🏠</span>
-                        <div>
-                          <span className="font-semibold block">Đang ở ngoài văn phòng</span>
-                          Bạn cách văn phòng {(detectedDistance / 1000).toFixed(1)} km (bán kính cho phép là {officeConfig.gpsRadiusMeters}m). Tự động chọn WFH.
-                        </div>
-                      </div>
-                    )
-                  ) : (
-                    <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                      📍 GPS: {currentGps?.lat.toFixed(5)}, {currentGps?.lng.toFixed(5)}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
 
             <button
               onClick={() => {
@@ -750,9 +625,9 @@ export default function CheckInOut({ user }: { user: User }) {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="flex items-center text-sm text-slate-600">
-                            <MapPin className="w-4 h-4 mr-1 text-slate-400" />
-                            {record.type}
+                          <div className="flex items-center text-sm text-slate-400">
+                            <MapPin className="w-4 h-4 mr-1 text-slate-300" />
+                            ---
                           </div>
                         </td>
                         <td className="px-6 py-4">
