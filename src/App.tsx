@@ -15,6 +15,7 @@ import Settings from './views/Settings';
 import ProjectWrapper from './views/ProjectWrapper';
 import HandoverWrapper from './views/HandoverWrapper';
 import WorkingSchedule from './views/WorkingSchedule';
+import SalaryAdvances from './views/SalaryAdvances';
 import { User } from './types';
 import { authService } from './services/auth.service';
 import { useToast } from './components/Toast';
@@ -111,6 +112,7 @@ export default function App() {
               <Route path="projects" element={<ProjectWrapper />} />
               <Route path="handover_record" element={<HandoverWrapper user={user} />} />
               <Route path="working_schedule" element={<WorkingSchedule user={user} />} />
+              <Route path="salary_advances" element={<SalaryAdvances user={user} />} />
               <Route path="settings" element={<Settings />} />
               <Route path="*" element={<Navigate to={`/${getDefaultTabForRole(user.role)}`} replace />} />
             </Route>

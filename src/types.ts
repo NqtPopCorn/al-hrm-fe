@@ -217,6 +217,7 @@ export interface PayrollMandatoryInsuranceBreakdown {
 export interface PayrollSystemDeductions {
   mandatoryInsurance: PayrollMandatoryInsuranceBreakdown;
   personalIncomeTax: number;
+  salaryAdvances?: number;
 }
 
 export interface PayrollManualAdjustments {
@@ -248,6 +249,14 @@ export interface PayrollItem {
   grossSalary: number;
   totalDeductions: number;
   netSalary: number;
+  paidAmount: number;
+  paymentStatus: 'PENDING' | 'PARTIAL' | 'PAID';
+  paymentHistory: {
+    amount: number;
+    date: string;
+    method: string;
+    note?: string;
+  }[];
   calculatedAt?: string | null;
   warnings: string[];
 }
