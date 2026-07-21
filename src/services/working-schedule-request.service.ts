@@ -3,6 +3,11 @@ import { api } from '../lib/api';
 export interface WorkingScheduleRequest {
   id: string;
   employeeId: string;
+  employee?: {
+    id: string;
+    code: string;
+    fullName: string;
+  };
   effectiveDate: string;
   workingDays: string[];
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
