@@ -71,6 +71,12 @@ export function usePayroll(options?: {
     },
   });
 
+  const updatePeriodMutation = useMutation({
+    mutationFn: (payload: { payrollId: string; name: string }) =>
+      payrollService.updatePeriod(payload.payrollId, { name: payload.name }),
+    onSuccess: invalidatePayroll,
+  });
+
   const calculatePeriodMutation = useMutation({
     mutationFn: (payrollId: string) => payrollService.calculatePeriod(payrollId),
     onSuccess: invalidatePayroll,
@@ -125,6 +131,21 @@ export function usePayroll(options?: {
     onSuccess: invalidatePayroll,
   });
 
+  const payItemMutation = useMutation({
+    mutationFn: (input: {
+      payrollItemId: string;
+      amount: number;
+      method: string;
+      note?: string;
+    }) =>
+      payrollService.payPayrollItem(input.payrollItemId, {
+        amount: input.amount,
+        method: input.method,
+        note: input.note,
+      }),
+    onSuccess: invalidatePayroll,
+  });
+
   return {
     periods: periodsQuery.data ?? [],
     selectedPeriod: periodDetailQuery.data ?? null,
@@ -151,6 +172,10 @@ export function usePayroll(options?: {
       periodEnd: string;
       standardWorkingDays?: number;
     }) => createPeriodMutation.mutateAsync(payload),
+    updatePeriod: (payload: {
+      payrollId: string;
+      name: string;
+    }) => updatePeriodMutation.mutateAsync(payload),
     calculatePeriod: (payrollId: string) =>
       calculatePeriodMutation.mutateAsync(payrollId),
     reviewPeriod: (payrollId: string) =>
@@ -174,6 +199,7 @@ export function usePayroll(options?: {
       note?: string;
     }) => updateItemManualAdjustmentsMutation.mutateAsync(payload),
     isCreatingPeriod: createPeriodMutation.isPending,
+    isUpdatingPeriod: updatePeriodMutation.isPending,
     isCalculatingPeriod: calculatePeriodMutation.isPending,
     isReviewingPeriod: reviewPeriodMutation.isPending,
     isApprovingPeriod: approvePeriodMutation.isPending,
@@ -182,5 +208,12 @@ export function usePayroll(options?: {
     isRevertingToCalculated: revertToCalculatedMutation.isPending,
     isRevertingToHrReviewed: revertToHrReviewedMutation.isPending,
     isUpdatingManualAdjustments: updateItemManualAdjustmentsMutation.isPending,
+    isPayingItem: payItemMutation.isPending,
+    payItem: (payload: {
+      payrollItemId: string;
+      amount: number;
+      method: string;
+      note?: string;
+    }) => payItemMutation.mutateAsync(payload),
   };
 }

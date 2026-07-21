@@ -13,6 +13,7 @@ import {
   FileText,
   History,
   LoaderCircle,
+  Pencil,
   Plus,
   Receipt,
   Search,
@@ -120,6 +121,7 @@ function getSystemDeductions(item: PayrollItem) {
     mandatoryInsurance:
       item.systemDeductions?.mandatoryInsurance ?? EMPTY_MANDATORY_INSURANCE,
     personalIncomeTax: item.systemDeductions?.personalIncomeTax ?? 0,
+    salaryAdvances: item.systemDeductions?.salaryAdvances ?? 0,
   };
 }
 
@@ -130,9 +132,9 @@ function getItemWarnings(item: PayrollItem) {
 function formatPayrollWarning(warning: string) {
   switch (warning) {
     case 'INSURANCE_BASE_BELOW_REGIONAL_MINIMUM':
-      return 'Muc dong bao hiem dang thap hon muc toi thieu vung da cau hinh.';
+      return 'Mức đóng bảo hiểm đang thấp hơn mức tối thiểu vùng đã cấu hình.';
     case 'NEGATIVE_NET_SALARY':
-      return 'Thuc nhan dang am. Hay kiem tra lai allowance, bonus, khau tru khac va bao hiem bat buoc.';
+      return 'Thực nhận đang âm. Hãy kiểm tra lại allowance, bonus, khấu trừ khác và bảo hiểm bắt buộc.';
     default:
       return warning;
   }
@@ -219,6 +221,7 @@ function calculatePayrollPreview(
   const totalDeductions =
     systemDeductions.mandatoryInsurance.total +
     systemDeductions.personalIncomeTax +
+    systemDeductions.salaryAdvances +
     manualAdjustments.otherDeduction;
 
   return {
@@ -366,6 +369,13 @@ export default function Payroll({ userRole }: { userRole: Role }) {
     getDefaultPeriodForm(),
   );
 
+  const [isEditPeriodModalOpen, setIsEditPeriodModalOpen] = useState(false);
+  const [editingPeriodName, setEditingPeriodName] = useState('');
+
+  const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentNote, setPaymentNote] = useState<string>('');
+
   const {
     periods,
     selectedPeriod,
@@ -377,6 +387,7 @@ export default function Payroll({ userRole }: { userRole: Role }) {
     periodError,
     myPayrollError,
     createPeriod,
+    updatePeriod,
     calculatePeriod,
     reviewPeriod,
     approvePeriod,
@@ -386,6 +397,7 @@ export default function Payroll({ userRole }: { userRole: Role }) {
     revertToHrReviewed,
     updateItemManualAdjustments,
     isCreatingPeriod,
+    isUpdatingPeriod,
     isCalculatingPeriod,
     isReviewingPeriod,
     isApprovingPeriod,
@@ -394,6 +406,8 @@ export default function Payroll({ userRole }: { userRole: Role }) {
     isRevertingToCalculated,
     isRevertingToHrReviewed,
     isUpdatingManualAdjustments,
+    payItem,
+    isPayingItem,
   } = usePayroll({
     selectedPeriodId,
     loadPeriods: canUseLiveAdminPayroll,
@@ -522,6 +536,7 @@ export default function Payroll({ userRole }: { userRole: Role }) {
   const pageError = periodsError || periodError || myPayrollError || pageActionError;
   const isBusy =
     isCreatingPeriod ||
+    isUpdatingPeriod ||
     isCalculatingPeriod ||
     isReviewingPeriod ||
     isApprovingPeriod ||
@@ -567,6 +582,30 @@ export default function Payroll({ userRole }: { userRole: Role }) {
       showToast({ type: 'success', message: `Đã tạo kỳ lương “${createdPeriod.name}”.` });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unable to create payroll period.';
+      setPageActionError(msg);
+      showToast({ type: 'error', message: msg });
+    }
+  };
+
+  const handleOpenEditModal = () => {
+    if (!selectedPeriodSummary) return;
+    setEditingPeriodName(selectedPeriodSummary.name);
+    setPageActionError(null);
+    setIsEditPeriodModalOpen(true);
+  };
+
+  const handleUpdatePeriod = async () => {
+    if (!selectedPeriodSummary) return;
+    try {
+      setPageActionError(null);
+      await updatePeriod({
+        payrollId: selectedPeriodSummary.id,
+        name: editingPeriodName.trim(),
+      });
+      setIsEditPeriodModalOpen(false);
+      showToast({ type: 'success', message: `Đã đổi tên kỳ lương thành “${editingPeriodName.trim()}”.` });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unable to update payroll period.';
       setPageActionError(msg);
       showToast({ type: 'error', message: msg });
     }
@@ -909,8 +948,18 @@ export default function Payroll({ userRole }: { userRole: Role }) {
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">
+                  <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
                     {selectedPeriodSummary?.name ?? 'Chọn một kỳ lương'}
+                    {selectedPeriodSummary && canUseLiveAdminPayroll && selectedPeriodSummary.status !== 'PAID' && (
+                      <button
+                        type="button"
+                        onClick={handleOpenEditModal}
+                        className="text-slate-400 hover:text-blue-600 transition-colors rounded p-1 hover:bg-blue-50"
+                        title="Sửa tên kỳ lương"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
                   </h2>
                   <p className="mt-2 text-sm text-slate-500">
                     {selectedPeriodSummary
@@ -947,6 +996,21 @@ export default function Payroll({ userRole }: { userRole: Role }) {
                           <ArrowLeft className="mr-2 h-4 w-4" />
                         )}
                         {prevPayrollAction.label}
+                      </button>
+                    ) : null}
+                    {selectedPeriodSummary.status === 'CALCULATED' ? (
+                      <button
+                        type="button"
+                        onClick={() => void calculatePeriod(selectedPeriodSummary.id)}
+                        disabled={isBusy}
+                        className="inline-flex items-center rounded-lg border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isBusy ? (
+                          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <BarChart3 className="mr-2 h-4 w-4" />
+                        )}
+                        Tính lại lương
                       </button>
                     ) : null}
                     {nextPayrollAction ? (
@@ -1017,12 +1081,6 @@ export default function Payroll({ userRole }: { userRole: Role }) {
                       </div>
                     </div>
                   </div>
-
-                  {nextPayrollAction ? (
-                    <div className="border-b border-slate-100 px-5 py-4 text-sm text-slate-600">
-                      {nextPayrollAction.description}
-                    </div>
-                  ) : null}
 
                   {manualAdjustedItemCount > 0 ? (
                     <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm text-amber-900">
@@ -1297,6 +1355,21 @@ export default function Payroll({ userRole }: { userRole: Role }) {
                       <FileText className="mr-2 h-4 w-4" />
                       Xuất PDF
                     </button>
+                    {selectedPeriodSummary.status === 'CALCULATED' ? (
+                      <button
+                        type="button"
+                        onClick={() => void calculatePeriod(selectedPeriodSummary.id)}
+                        disabled={isBusy}
+                        className="inline-flex items-center rounded-lg border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isBusy ? (
+                          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <BarChart3 className="mr-2 h-4 w-4" />
+                        )}
+                        Tính lại lương
+                      </button>
+                    ) : null}
                     {nextPayrollAction ? (
                       <button
                         type="button"
@@ -2003,6 +2076,19 @@ export default function Payroll({ userRole }: { userRole: Role }) {
                         </div>
                         <div className="flex items-start justify-between gap-4">
                           <div>
+                            <p>Tạm ứng lương</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Các khoản tạm ứng đã được duyệt & chi trả trong kỳ.
+                            </p>
+                          </div>
+                          <span className="font-semibold text-slate-900">
+                            -{formatCurrency(
+                              getSystemDeductions(selectedPayrollItem).salaryAdvances,
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
                             <p>Khấu trừ khác</p>
                             <p className="mt-1 text-xs text-slate-500">
                               Khoản khấu trừ bổ sung do HR nhập thủ công.
@@ -2165,6 +2251,62 @@ export default function Payroll({ userRole }: { userRole: Role }) {
                         </div>
                       </div>
                     </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 md:col-span-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Lịch sử thanh toán
+                        </p>
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            selectedPayrollItem.paymentStatus === 'PAID'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : selectedPayrollItem.paymentStatus === 'PARTIAL'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {selectedPayrollItem.paymentStatus === 'PAID'
+                            ? 'Đã thanh toán đủ'
+                            : selectedPayrollItem.paymentStatus === 'PARTIAL'
+                            ? 'Đã thanh toán 1 phần'
+                            : 'Chưa thanh toán'}
+                        </span>
+                      </div>
+                      
+                      <div className="mt-4">
+                        <div className="flex justify-between items-center bg-slate-50 rounded-lg p-3 mb-4">
+                          <div>
+                            <p className="text-xs text-slate-500">Đã thanh toán</p>
+                            <p className="font-semibold text-slate-900">{formatCurrency(selectedPayrollItem.paidAmount ?? 0)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-slate-500">Còn lại</p>
+                            <p className="font-semibold text-rose-600">{formatCurrency(Math.max(0, (selectedItemPreview?.netSalary ?? selectedPayrollItem.netSalary) - (selectedPayrollItem.paidAmount ?? 0)))}</p>
+                          </div>
+                        </div>
+
+                        {selectedPayrollItem.paymentHistory?.length > 0 ? (
+                          <div className="space-y-3">
+                            {selectedPayrollItem.paymentHistory.map((history, idx) => (
+                              <div key={idx} className="flex justify-between items-center border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">{formatCurrency(history.amount)}</p>
+                                  <p className="text-xs text-slate-500">{new Date(history.date).toLocaleString('vi-VN')} • {history.method}</p>
+                                </div>
+                                {history.note && (
+                                  <p className="text-xs text-slate-600 max-w-[50%] text-right truncate" title={history.note}>
+                                    {history.note}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 text-center py-4">Chưa có giao dịch thanh toán nào.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2240,6 +2382,22 @@ export default function Payroll({ userRole }: { userRole: Role }) {
                     >
                       Xuất PDF
                     </button>
+                    {(selectedPeriodSummary?.status === 'APPROVED' || selectedPeriodSummary?.status === 'PAID') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const remaining = Math.max(0, (selectedItemPreview?.netSalary ?? selectedPayrollItem.netSalary) - (selectedPayrollItem.paidAmount ?? 0));
+                          if (remaining > 0) {
+                            setPaymentAmount(remaining);
+                          }
+                          setPaymentNote(`Thanh toan luong ky ${selectedPayrollItem.periodCode} cho ${selectedPayrollItem.employeeCode}`);
+                          setIsVietQRModalOpen(true);
+                        }}
+                        className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500"
+                      >
+                        Thanh toán VietQR
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2247,6 +2405,86 @@ export default function Payroll({ userRole }: { userRole: Role }) {
           </div>
         </>
       ) : null}
+
+      <Modal
+        isOpen={isVietQRModalOpen}
+        onClose={() => setIsVietQRModalOpen(false)}
+        title="Thanh toán qua VietQR"
+      >
+        {selectedPayrollItem ? (
+          <div className="space-y-4">
+            {!selectedPayrollItem.bankSnapshot.bankId || !selectedPayrollItem.bankSnapshot.bankAccountNumber ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                Nhân viên này chưa cập nhật đầy đủ thông tin ngân hàng. Vui lòng cập nhật trong hồ sơ nhân viên trước.
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-center">
+                  <img
+                    src={`https://img.vietqr.io/image/${selectedPayrollItem.bankSnapshot.bankId}-${selectedPayrollItem.bankSnapshot.bankAccountNumber}-compact2.png?amount=${paymentAmount}&addInfo=${encodeURIComponent(paymentNote)}&accountName=${encodeURIComponent(selectedPayrollItem.bankSnapshot.bankAccountName || '')}`}
+                    alt="VietQR"
+                    className="w-64 h-64 object-contain rounded-xl border border-slate-200 shadow-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Số tiền thanh toán lần này
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={paymentAmount}
+                    onChange={e => setPaymentAmount(Number(e.target.value))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Nội dung chuyển khoản
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentNote}
+                    onChange={e => setPaymentNote(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsVietQRModalOpen(false)}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isPayingItem || paymentAmount <= 0}
+                    onClick={async () => {
+                      try {
+                        const updatedItem = await payItem({
+                          payrollItemId: selectedPayrollItem.id,
+                          amount: paymentAmount,
+                          method: 'VietQR',
+                          note: paymentNote,
+                        });
+                        setSelectedPayrollItem(updatedItem);
+                        setIsVietQRModalOpen(false);
+                        showToast({ message: 'Thanh toán thành công', type: 'success' });
+                      } catch (err: any) {
+                        showToast({ message: err.message || 'Lỗi khi thanh toán', type: 'error' });
+                      }
+                    }}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
+                  >
+                    {isPayingItem ? 'Đang xác nhận...' : 'Xác nhận đã chuyển khoản'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         isOpen={isCreateModalOpen}
@@ -2479,6 +2717,67 @@ export default function Payroll({ userRole }: { userRole: Role }) {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      {/* Edit Period Modal */}
+      <Modal
+        isOpen={isEditPeriodModalOpen}
+        onClose={() => !isUpdatingPeriod && setIsEditPeriodModalOpen(false)}
+        title="Sửa tên kỳ lương"
+      >
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            void handleUpdatePeriod();
+          }}
+          className="space-y-4"
+        >
+          {pageActionError && (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
+              {pageActionError}
+            </div>
+          )}
+
+          <div>
+            <label
+              htmlFor="editingPeriodName"
+              className="block text-sm font-medium text-slate-700"
+            >
+              Tên kỳ lương <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              id="editingPeriodName"
+              value={editingPeriodName}
+              onChange={e => setEditingPeriodName(e.target.value)}
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+              maxLength={120}
+              placeholder="VD: Payroll July 2026"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setIsEditPeriodModalOpen(false)}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+              disabled={isUpdatingPeriod}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              disabled={isUpdatingPeriod || !editingPeriodName.trim()}
+              className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isUpdatingPeriod ? (
+                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Cập nhật
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

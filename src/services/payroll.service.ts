@@ -24,6 +24,15 @@ export const payrollService = {
     return api.post<PayrollPeriod>('/payroll', payload);
   },
 
+  updatePeriod(
+    payrollId: string,
+    payload: {
+      name: string;
+    }
+  ) {
+    return api.patch<PayrollPeriod>(`/payroll/${payrollId}`, payload);
+  },
+
   calculatePeriod(payrollId: string) {
     return api.post<PayrollPeriodDetail>(`/payroll/${payrollId}/calculate`);
   },
@@ -66,5 +75,16 @@ export const payrollService = {
       `/payroll/items/${payrollItemId}/manual-adjustments`,
       payload,
     );
+  },
+
+  payPayrollItem(
+    payrollItemId: string,
+    payload: {
+      amount: number;
+      method: string;
+      note?: string;
+    }
+  ) {
+    return api.post<PayrollItem>(`/payroll/items/${payrollItemId}/pay`, payload);
   },
 };
