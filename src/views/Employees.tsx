@@ -8,6 +8,7 @@ import Modal from '../components/Modal';
 import { useDepartments } from '../hooks/useDepartments';
 import { useEmployees } from '../hooks/useEmployees';
 import { usePositions } from '../hooks/usePositions';
+import { VIETQR_BANKS } from '../lib/banks';
 import { ApiError } from '../lib/api';
 import {
   getEmployeeExportBlockers,
@@ -1249,14 +1250,20 @@ export default function Employees({ userRole }: { userRole: Role }) {
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   Bank
                 </label>
-                <input
-                  type="text"
+                <select
                   value={employeeForm.bankId}
                   onChange={event =>
                     handleFormChange('bankId', event.target.value)
                   }
                   className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                />
+                >
+                  <option value="">No bank</option>
+                  {VIETQR_BANKS.map(bank => (
+                    <option key={bank.bin} value={bank.bin}>
+                      {bank.shortName} - {bank.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
@@ -1537,14 +1544,20 @@ export default function Employees({ userRole }: { userRole: Role }) {
                   <label className="block text-xs font-medium text-slate-700 mb-1">
                     Bank
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={employeeForm.bankId}
                     onChange={event =>
                       handleFormChange('bankId', event.target.value)
                     }
                     className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                  />
+                  >
+                    <option value="">No bank</option>
+                    {VIETQR_BANKS.map(bank => (
+                      <option key={bank.bin} value={bank.bin}>
+                        {bank.shortName} - {bank.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">
