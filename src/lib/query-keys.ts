@@ -88,3 +88,9 @@ export const auditLogQueryKeys = {
   list: (filters: { page?: number; limit?: number }) => [...auditLogQueryKeys.lists(), filters] as const,
   stats: () => [...auditLogQueryKeys.all, 'stats'] as const,
 };
+
+export const salaryAdvancesQueryKeys = {
+  all: ['salary-advances'] as const,
+  lists: () => [...salaryAdvancesQueryKeys.all, 'list'] as const,
+  list: (filters: { isAdmin: boolean }) => [...salaryAdvancesQueryKeys.lists(), filters] as const,
+};

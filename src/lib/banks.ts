@@ -1,0 +1,15 @@
+export const VIETQR_BANKS = [
+  { bin: '970436', shortName: 'VCB', name: 'Vietcombank' },
+  { bin: '970415', shortName: 'ICB', name: 'VietinBank' },
+  { bin: '970418', shortName: 'BIDV', name: 'BIDV' },
+  { bin: '970405', shortName: 'VBA', name: 'Agribank' },
+  { bin: '970403', shortName: 'STB', name: 'Sacombank' },
+  { bin: '970407', shortName: 'TCB', name: 'Techcombank' },
+  { bin: '970422', shortName: 'MB', name: 'MBBank' },
+  { bin: '970416', shortName: 'ACB', name: 'ACB' },
+  { bin: '970432', shortName: 'VPB', name: 'VPBank' },
+  { bin: '970423', shortName: 'TPB', name: 'TPBank' },
+  { bin: '970441', shortName: 'VIB', name: 'VIB' },
+  { bin: '970411', shortName: 'SHB', name: 'SHB' },
+  { bin: '970428', shortName: 'OJB', name: 'OceanBank' },
+];
